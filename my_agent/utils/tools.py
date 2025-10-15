@@ -10,7 +10,7 @@ ONE-STOP 통합 유틸리티
 - memory / relevance check (파이프라인용)
 노드는 이 파일 하나만 임포트하면 됨.
 """
-from typing import Dict, Any, Tuple, List, Optional
+from typing import Dict, Any, Tuple, List, Optional, Tuple
 import re
 import pandas as pd
 
@@ -18,6 +18,8 @@ from my_agent.utils.config import CONFIRM_ON_MULTI, ENABLE_RELEVANCE_CHECK
 from my_agent.utils.state import GraphState
 from mcp.adapter_client import call_mcp_tool
 from langchain_core.messages import HumanMessage, AIMessage
+
+from urllib.parse import urlparse
 
 # =============================================================================
 # helpers  (기존 helpers.py)
@@ -105,9 +107,16 @@ def check_base_relevance(user_query: str, response: str, card: Dict[str, Any]) -
     mct_name = card.get("mct_name", "")
     if mct_name and len(mct_name) > 3 and mct_name not in response:
         return False, f"가맹점명 '{mct_name}'이 응답에 포함되지 않았습니다"
-    data_keywords = ["재방문", "배달", "고객", "비중", "%", "매출", "순위", "신규", "단골", "방문"]
+
+    # ✅ 내부/외부 데이터 근거 단어를 모두 허용
+    data_keywords = [
+        "재방문", "배달", "고객", "비중", "%", "매출", "순위", "신규", "단골", "방문",
+        # 외부 근거 스니펫 관련
+        "리뷰", "블로그", "기사", "출처", "url"
+    ]
     if not any(kw in response for kw in data_keywords):
         return False, "데이터 근거가 응답에 포함되지 않았습니다"
+
     has_numbers = bool(re.search(r"\d+", response))
     if not has_numbers:
         return False, "구체적인 수치가 응답에 포함되지 않았습니다"
@@ -116,10 +125,14 @@ def check_base_relevance(user_query: str, response: str, card: Dict[str, Any]) -
 def check_intent_specific_relevance(intent: str, response: str) -> Tuple[bool, str]:
     """Intent별 추가 검증"""
     rules = {
-        "SNS":      {"keywords": ["sns", "인스타", "릴스", "틱톡", "채널", "콘텐츠", "해시태그", "포스팅"], "min": 2, "msg": "SNS 마케팅 관련 키워드가 부족합니다"},
-        "REVISIT":  {"keywords": ["재방문", "단골", "리텐션", "쿠폰", "멤버십", "스탬프", "포인트", "충성도"], "min": 2, "msg": "재방문 전략 관련 키워드가 부족합니다"},
-        "ISSUE":    {"keywords": ["문제", "이슈", "개선", "원인", "해결", "진단", "약점", "위험"], "min": 2, "msg": "문제 진단 관련 키워드가 부족합니다"},
-        "GENERAL":  {"keywords": ["전략", "마케팅", "방안", "제안", "추천"], "min": 1, "msg": "마케팅 전략 관련 키워드가 부족합니다"},
+        "SNS": {
+            # ✅ 플랫폼/채널 호칭 보강
+            "keywords": ["sns", "인스타", "릴스", "틱톡", "채널", "콘텐츠", "해시태그", "포스팅", "네이버", "플레이스", "쇼츠"],
+            "min": 2, "msg": "SNS 마케팅 관련 키워드가 부족합니다"
+        },
+        "REVISIT": {"keywords": ["재방문", "단골", "리텐션", "쿠폰", "멤버십", "스탬프", "포인트", "충성도"], "min": 2, "msg": "재방문 전략 관련 키워드가 부족합니다"},
+        "ISSUE":   {"keywords": ["문제", "이슈", "개선", "원인", "해결", "진단", "약점", "위험"], "min": 2, "msg": "문제 진단 관련 키워드가 부족합니다"},
+        "GENERAL": {"keywords": ["전략", "마케팅", "방안", "제안", "추천"], "min": 1, "msg": "마케팅 전략 관련 키워드가 부족합니다"},
     }
     rule = rules.get((intent or "").upper())
     if not rule:
@@ -130,59 +143,16 @@ def check_intent_specific_relevance(intent: str, response: str) -> Tuple[bool, s
         return False, f"{rule['msg']} (필요: {rule['min']}개, 발견: {len(matched)}개)"
     return True, "OK"
 
-def check_actionability(response: str) -> Tuple[bool, str]:
-    """실행 가능성 체크"""
-    indicators = ["추천", "제안", "방법", "전략", "실행", "진행", "도입", "활용", "개선", "강화", "운영", "적용"]
-    if not any(ind in (response or "") for ind in indicators):
-        return False, "실행 가능한 제안이 포함되지 않았습니다"
-    return True, "OK"
-
-def check_response_structure(response: str) -> Tuple[bool, str]:
-    """응답 구조 체크"""
-    lines = (response or "").strip().split("\n")
-    non_empty = [l for l in lines if l.strip()]
-    if len(non_empty) < 3:
-        return False, "응답이 너무 단순합니다 (최소 3개 문단 필요)"
-    from collections import Counter
-    counts = Counter(non_empty)
-    if counts and max(counts.values()) >= 3:
-        return False, "응답에 과도한 반복이 있습니다"
-    return True, "OK"
-
 def check_forbidden_content(response: str) -> Tuple[bool, List[str]]:
-    """금지 콘텐츠 체크"""
-    forbidden_patterns = ["100% 보장", "무조건 성공", "확실한 효과", "절대", "반드시", "진단", "처방"]
+    """금지 콘텐츠 체크(오탐 줄이기)"""
+    # ✅ 마케팅 문맥에서 정상적으로 쓰이는 '진단/처방' 제거
+    forbidden_patterns = ["100% 보장", "무조건 성공", "확실한 효과", "절대", "반드시"]
     found = []
     low = (response or "").lower()
     for p in forbidden_patterns:
         if p.lower() in low:
             found.append(p)
     return len(found) == 0, found
-
-def run_all_checks(user_query: str, response: str, card: Dict[str, Any], intent: str) -> Tuple[bool, List[str]]:
-    """모든 검증 규칙 실행"""
-    failures: List[str] = []
-    ok, msg = check_base_relevance(user_query, response, card)
-    if not ok: failures.append(f"[기본] {msg}")
-    ok, msg = check_intent_specific_relevance(intent, response)
-    if not ok: failures.append(f"[Intent] {msg}")
-    ok, msg = check_actionability(response)
-    if not ok: failures.append(f"[액션] {msg}")
-    ok, msg = check_response_structure(response)
-    if not ok: failures.append(f"[구조] {msg}")
-    ok, found = check_forbidden_content(response)
-    if not ok: failures.append(f"[금지어] 발견: {', '.join(found)}")
-    return len(failures) == 0, failures
-
-def calculate_relevance_score(user_query: str, response: str, card: Dict[str, Any], intent: str) -> float:
-    """관련성 점수 (0.0~1.0)"""
-    score, max_score = 0.0, 5.0
-    if check_base_relevance(user_query, response, card)[0]: score += 1
-    if check_intent_specific_relevance(intent, response)[0]: score += 1
-    if check_actionability(response)[0]: score += 1
-    if check_response_structure(response)[0]: score += 1
-    if check_forbidden_content(response)[0]: score += 1
-    return score / max_score
 
 # =============================================================================
 # prompt builder  (기존 prompt_builder.py)
@@ -301,6 +271,58 @@ def build_features(state: GraphState) -> GraphState:
 # =============================================================================
 # postprocess  (기존 postprocess.py)
 # =============================================================================
+def _safe_str(x) -> str:
+    return "" if x is None else str(x)
+
+def _format_yyyymm(yyyymm: Any) -> Optional[str]:
+    s = _safe_str(yyyymm)
+    if len(s) >= 6 and s[:4].isdigit() and s[4:6].isdigit():
+        return f"{s[:4]}년 {s[4:6]}월"
+    return None
+
+def _dedup_sources(snips: List[Dict[str, Any]], limit: int = 3) -> List[Dict[str, Any]]:
+    seen = set()
+    out = []
+    for s in snips or []:
+        title = _safe_str(s.get("title", "")).strip()
+        url   = _safe_str(s.get("url", "")).strip()
+        dom   = urlparse(url).netloc if url else _safe_str(s.get("source", "")).strip()
+        key = (title.lower(), dom.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(s)
+        if len(out) >= limit:
+            break
+    return out
+
+def _build_sources_block(snips: List[Dict[str, Any]], meta: Optional[Dict[str, Any]]) -> str:
+    snips = _dedup_sources(snips, limit=3)
+    if not snips:
+        return ""
+    lines = ["\n\n---\n🔗 참고 출처"]
+    if meta:
+        q = _safe_str(meta.get("query", ""))
+        prov = _safe_str(meta.get("provider_used", ""))
+        if q or prov:
+            lines.append(f"*검색 정보: provider={prov or 'auto'}, query=\"{q}\"*")
+    for s in snips:
+        title = _safe_str(s.get("title", "(제목 없음)"))
+        url   = _safe_str(s.get("url", ""))
+        src   = _safe_str(s.get("source", urlparse(url).netloc if url else ""))
+        date  = _safe_str(s.get("published_at", ""))
+        head  = f"- {title} · {src}"
+        if date:
+            head += f" · {date}"
+        if url:
+            head += f" · {url}"
+        lines.append(head)
+        snip = _safe_str(s.get("snippet", "")).strip()
+        if snip:
+            snip = re.sub(r"\s+", " ", snip)[:220]
+            lines.append(f"  └ {snip}")
+    return "\n".join(lines)
+
 def clean_response(response: str) -> str:
     response = re.sub(r"\n{3,}", "\n\n", response or "")
     response = response.strip()
@@ -313,10 +335,9 @@ def add_proxy_badge(response: str, is_proxy: bool) -> str:
     return response
 
 def add_data_quality_badge(response: str, card: Dict[str, Any]) -> str:
-    yyyymm = card.get("yyyymm", "")
-    if yyyymm:
-        year, month = yyyymm[:4], yyyymm[4:6]
-        response += f"\n\n📅 **기준 데이터**: {year}년 {month}월"
+    msg = _format_yyyymm(card.get("yyyymm", ""))
+    if msg:
+        response += f"\n\n📅 **기준 데이터**: {msg}"
     return response
 
 def add_disclaimer(response: str, card: Dict[str, Any]) -> str:
@@ -330,6 +351,11 @@ def add_disclaimer(response: str, card: Dict[str, Any]) -> str:
     return response + disclaimer
 
 def generate_action_seed(card: Dict[str, Any], signals: List[str], intent: str) -> List[Dict[str, Any]]:
+    def format_percentage(x):
+        try:
+            return f"{float(x):.1f}%"
+        except Exception:
+            return _safe_str(x)
     actions: List[Dict[str, Any]] = []
     priority = 1
     if "RETENTION_ALERT" in signals:
@@ -358,13 +384,31 @@ def generate_action_seed(card: Dict[str, Any], signals: List[str], intent: str) 
         })
     return actions[:5]
 
-def postprocess_response(raw_response: str, card: Dict[str, Any],
-                         signals: List[str], intent: str = "GENERAL") -> Tuple[str, List[Dict[str, Any]]]:
+def postprocess_response(
+    raw_response: str,
+    card: Dict[str, Any],
+    signals: List[str],
+    intent: str = "GENERAL",
+    web_snippets: Optional[List[Dict[str, Any]]] = None,
+    web_meta: Optional[Dict[str, Any]] = None,
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """
+    최종 텍스트와 액션 시드 생성.
+    - web_snippets/meta가 주어지면 하단에 '참고 출처' 자동 부착
+    - 기존 호출부와 호환: web_* 파라미터 생략 가능
+    """
     text = clean_response(raw_response)
     text = add_proxy_badge(text, card.get("proxy", False))
     text = add_data_quality_badge(text, card)
-    actions = generate_action_seed(card, signals, intent)
+
+    # (선택) 참고 출처 섹션
+    if web_snippets:
+        text += _build_sources_block(web_snippets, web_meta)
+
+    # 디스클레이머는 항상 마지막
     text = add_disclaimer(text, card)
+
+    actions = generate_action_seed(card, signals, intent)
     return text, actions
 
 # =============================================================================
@@ -421,10 +465,30 @@ def update_conversation_memory(state: GraphState) -> GraphState:
 # =============================================================================
 # relevance check stage  (기존 relevance_checker.py)
 # =============================================================================
-def check_relevance(state: GraphState) -> GraphState:
+def _check_web_citation_rule(state: "GraphState") -> Tuple[bool, str]:
+    """
+    웹 스니펫이 state에 있는 경우, 응답에 최소한의 출처 힌트가 들어갔는지 확인.
+    - '참고 출처' 섹션 또는 'http(s)://' 혹은 도메인 흔적 1건 이상
+    - 소프트 룰: 실패해도 통과시키고 메시지만 남김
+    """
+    snips = state.get("web_snippets") or []
+    if not snips:
+        return True, "no web snippets -> skip"
+
+    raw = (state.get("raw_response") or "") + (state.get("final_response") or "")
+    raw_low = raw.lower()
+
+    has_anchor = ("참고 출처" in raw) or ("http://" in raw_low) or ("https://" in raw_low)
+    has_domain = any(d in raw_low for d in [".co.kr", ".com", ".net", ".kr"])
+    if has_anchor or has_domain:
+        return True, "web citations present"
+    return False, "web snippets used but no visible citation hint"
+
+def check_relevance(state: "GraphState") -> "GraphState":
     if not ENABLE_RELEVANCE_CHECK:
         state["relevance_passed"] = True
         return state
+
     raw = state.get("raw_response", "") or ""
     user_q = state.get("user_query", "") or ""
     card = state.get("card_data", {}) or {}
@@ -443,6 +507,14 @@ def check_relevance(state: GraphState) -> GraphState:
         state["error"] = f"[Relevance] {msg}"
         state["retry_count"] = state.get("retry_count", 0) + 1
         return state
+
+    # 소프트 웹 인용 규칙
+    passed, msg = _check_web_citation_rule(state)
+    if not passed:
+        state["error"] = f"[Relevance][Soft] {msg}"
+        # 하드 실패로 돌리고 싶다면 아래 두 줄 주석 해제
+        # state["relevance_passed"] = False
+        # return state
 
     state["relevance_passed"] = True
     return state

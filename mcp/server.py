@@ -10,6 +10,7 @@ from mcp.tools import (
     load_area_data,
     load_region_data
 )
+from mcp.tools_web import web_search
 
 mcp = FastMCP(
     "BigContestMCPServer",
@@ -30,6 +31,7 @@ mcp.tool()(load_store_data)
 mcp.tool()(resolve_region)
 mcp.tool()(load_area_data)
 mcp.tool()(load_region_data)
+mcp.tool()(web_search)  
 
 if __name__ == "__main__":
     mcp.run()

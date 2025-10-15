@@ -6,43 +6,28 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from my_agent.utils.config import GOOGLE_API_KEY, LLM_MODEL, LLM_TEMPERATURE
 from my_agent.utils.state import GraphState
 from my_agent.utils.tools import build_base_context, build_signals_context, postprocess_response
-from pathlib import Path
+
+from .sns import build_web_context, append_sources  # 재사용
 
 PROMPT = """당신은 고객 충성도 전문가입니다.
 
 아래 가맹점의 재방문율을 높일 수 있는 구체적인 마케팅 아이디어를 제시하세요.
 
+[INTERNAL DATA]
 {base_context}
 {signals_context}
+
+[EXTERNAL (최근 리뷰/기사/블로그 스니펫 요약)]
+{web_context}
 
 [출력 형식]
 1) 현황 진단 (2~3줄)
 2) 재방문 촉진 아이디어 (5개, 각 근거 포함)
 3) 우선순위 1순위 액션플랜 (구체적 실행 방법)
 
-데이터를 근거로 설득력 있게 작성하세요.
-"""
-
-# SNS 마케팅(SNS) 노드용
-SNS_PROMPT = """당신은 SNS 마케팅 전문가입니다.
-
-아래 가맹점 데이터를 기반으로 SNS 채널 추천 및 콘텐츠 전략을 작성하세요.
-
-{base_context}
-{signals_context}
-
-[주요 고객층]
-{persona}
-
-[추천 채널]
-{channel_hints}
-
-[출력 형식]
-1) 추천 SNS 채널 (2~3개, 각 채널별 이유)
-2) 타겟별 콘텐츠 아이디어 (3~5개)
-3) 홍보 메시지 예시 (3개)
-
-구체적이고 실행 가능한 전략을 제시하세요.
+주의:
+- 각 아이디어 끝에 근거 출처 표기: (내부) / (외부)
+- 실행 가능성과 우선순위를 고려
 """
 
 class RevisitNode:
@@ -52,19 +37,20 @@ class RevisitNode:
             google_api_key=GOOGLE_API_KEY,
             temperature=LLM_TEMPERATURE
         ) if GOOGLE_API_KEY else None
-        
         self.prompt_template = PROMPT
     
     def __call__(self, state: GraphState) -> GraphState:
         card = state.get("card_data", {})
         signals = state.get("signals", [])
-        
+
         base_ctx = build_base_context(card)
-        sig_ctx = build_signals_context(signals)
-        
+        sig_ctx  = build_signals_context(signals)
+        web_ctx  = build_web_context(state)
+
         prompt = self.prompt_template.format(
             base_context=base_ctx,
-            signals_context=sig_ctx
+            signals_context=sig_ctx,
+            web_context=web_ctx
         )
         
         if self.llm:
@@ -77,8 +63,11 @@ class RevisitNode:
             raw = "(데모) 재방문 전략 생성 중..."
         
         state["raw_response"] = raw
-        final, actions = postprocess_response(raw, card, signals)
+        final, actions = postprocess_response(
+            raw, card, signals, intent=state.get("intent","GENERAL"),
+            web_snippets=state.get("web_snippets"), web_meta=state.get("web_meta")
+        )
+        final = append_sources(final, state)
         state["final_response"] = final
         state["actions"] = actions
-        
         return state

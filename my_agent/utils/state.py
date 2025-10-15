@@ -27,7 +27,11 @@ class GraphState(TypedDict):
     card_data: Optional[Dict[str, Any]]
     area_data: Optional[Dict[str, Any]]
     region_data: Optional[Dict[str, Any]]
-    
+
+    # ★ 웹 보강 결과(새로 추가)
+    web_snippets: Optional[List[Dict[str, Any]]]   # MCP web_search 결과 요약 리스트
+    web_meta: Optional[Dict[str, Any]]             # provider_used, query, count 등
+
     # ─── 분석 결과 ───
     signals: List[str]  # RETENTION_ALERT, CHANNEL_MIX_ALERT 등
     persona: Optional[str]
@@ -48,3 +52,6 @@ class GraphState(TypedDict):
     relevance_passed: bool
     retry_count: int
     error: Optional[str]
+
+    # ★ 내부데이터 빈약 시 웹 보강 강제 플래그(새로 추가)
+    need_web_fallback: Optional[bool]

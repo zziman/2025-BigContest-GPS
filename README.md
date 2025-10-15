@@ -4,7 +4,7 @@
 LangGraph로 멀티턴·분기·재시도를 제어하고, MCP 툴로 CSV 데이터를 조회한다.
 CLI(로컬 테스트)와 Streamlit UI를 제공한다.
 
-![파이프라인](assets/diagram_1014.png)
+![파이프라인](assets/diagram_1015.png)
 
 <br>
 
@@ -14,41 +14,42 @@ CLI(로컬 테스트)와 Streamlit UI를 제공한다.
 2025-BigContest/
 ├─ my_agent/
 │  ├─ __init__.py
-│  ├─ agent.py                     
+│  ├─ agent.py                         
 │  └─ utils/
 │     ├─ __init__.py
-│     ├─ config.py                 
-│     ├─ state.py                 
-│     ├─ tools.py                  
+│     ├─ config.py                     
+│     ├─ state.py                      
+│     ├─ tools.py                      
 │     └─ nodes/
-│        ├─ router.py              # RouterNode 
-│        ├─ sns.py                 # SNSNode (프롬프트 내장)
-│        ├─ revisit.py             # RevisitNode (프롬프트 내장)
-│        ├─ issue.py               # IssueNode (프롬프트 내장)
-│        └─ general.py             # GeneralNode (프롬프트 내장)
+│        ├─ router.py                  
+│        ├─ sns.py                     
+│        ├─ revisit.py                 
+│        ├─ issue.py                  
+│        ├─ general.py                 
+│        └─ web_augment.py             
 │
 ├─ mcp/
 │  ├─ server.py
 │  ├─ tools.py
-│  ├─ contracts.py
+│  ├─ tools_web.py                     
+│  ├─ contracts.py                     
 │  └─ adapter_client.py
 │
 ├─ data/
 │  ├─ franchise_data.csv
 │  ├─ biz_area.csv
 │  └─ admin_dong.csv
-│ 
+│
 ├─ assets/
 │
-├─ streamlit_app.py
+├─ dashboard.py           
+├─ streamlit_app.py                    
 ├─ local_test.py
 ├─ .streamlit/
-│  └─ secrets.toml
-├─ .env
-└─ requirements.txt
+│  └─ secrets.toml                     
+├─ .env                                
+└─ requirements.txt                    
 ```
-
-> 데이터 주의: 현재 `data/biz_area.csv`, `data/admin_dong.csv`는 외부데이터 대체 목적의 **임의 더미 데이터**입니다. 
 
 <br>
 
@@ -64,17 +65,27 @@ source .venv/bin/activate    # Windows: .\.venv\Scripts\Activate.ps1
 uv pip install -r requirements.txt
 
 # 3) 시크릿(secrets.toml) 생성 — 권장 방식
+mkdir -p .streamlit
 cat > .streamlit/secrets.toml <<'TOML'
 # --- API Keys ---
-GOOGLE_API_KEY = "your_key"     # ★ 필수 (Router/노드가 LLM 전용)
+GOOGLE_API_KEY = "your_key"                 # ★ 필수 (Router/노드가 LLM 전용)
+NAVER_CLIENT_ID = "your_naver_client_id"    # 네이버 검색용
+NAVER_CLIENT_SECRET = "your_naver_secret"
+SURFER_API_KEY = "your_serper_api_key"      # Serper(서퍼) API
+TABILI_API_KEY = "your_tavily_api_key"      # Tavily(타빌리) API
 
 # --- 데이터 경로 ---
 FRANCHISE_CSV = "./data/franchise_data.csv"
 BIZ_AREA_CSV = "./data/biz_area.csv"
 ADMIN_DONG_CSV = "./data/admin_dong.csv"
 
+# --- 검색 파라미터 ---
+SEARCH_TIMEOUT = 12              # 초 단위
+SEARCH_TOPK = 5                  # 상위 K 결과
+SEARCH_RECENCY_DAYS = 60         # 최근 N일 가중/필터
+
 # --- 정책/토글 ---
-CONFIRM_ON_MULTI = 0                      # 1: 후보 다수 시 사용자 확인, 0: 자동 선택
+CONFIRM_ON_MULTI = 0
 LLM_MODEL = "gemini-2.5-flash"
 LLM_TEMPERATURE = 0.2
 ENABLE_RELEVANCE_CHECK = true
@@ -88,14 +99,26 @@ TOML
 # 4) (선택) .env로 설정하고 싶다면 — 로컬 개발에만 사용 권장
 # cat > .env <<'ENV'
 # GOOGLE_API_KEY=your_key
+# NAVER_CLIENT_ID=your_naver_client_id
+# NAVER_CLIENT_SECRET=your_naver_secret
+# SURFER_API_KEY=your_serper_api_key
+# TABILI_API_KEY=your_tavily_api_key
+#
 # FRANCHISE_CSV=./data/franchise_data.csv
 # BIZ_AREA_CSV=./data/biz_area.csv
 # ADMIN_DONG_CSV=./data/admin_dong.csv
+#
+# SEARCH_TIMEOUT=12
+# SEARCH_TOPK=5
+# SEARCH_RECENCY_DAYS=60
+#
+# MCP_ENABLED=1
 # CONFIRM_ON_MULTI=0
 # LLM_MODEL=gemini-2.5-flash
 # LLM_TEMPERATURE=0.2
-# ENABLE_RELEVANCE_CHECK=1
-# ENABLE_MEMORY=1
+# ENABLE_RELEVANCE_CHECK=true
+# ENABLE_MEMORY=true
+#
 # GRPC_VERBOSITY=ERROR
 # GRPC_TRACE=
 # ENV

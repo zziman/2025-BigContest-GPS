@@ -10,7 +10,7 @@ from mcp.tools import (
     load_area_data,
     load_region_data
 )
-
+from mcp.tools_web import web_search
 
 def get_mcp_tools() -> List:
     """
@@ -29,6 +29,7 @@ def call_mcp_tool(tool_name: str, **kwargs) -> dict:
         "resolve_region": resolve_region,
         "load_area_data": load_area_data,
         "load_region_data": load_region_data,
+        "web_search": web_search, 
     }
     
     tool_func = tools_map.get(tool_name)
