@@ -2,8 +2,6 @@
 
 ## Pipeline
 
----
-
 ```python
 [사용자 입력]
      │   (store name + 질문)
@@ -204,15 +202,13 @@
     > **UI → 어댑터(run_one_turn) → 그래프(create_graph 캐시) → Router → Resolver → Data → Features → WebAugment(웹 보강) → ISSUE 노드(LLM) → 후처리/검증 → 어댑터 요약 → UI 렌더**
     > 
 
-## Implementation
+<br>
 
----
+## Implementation
 
 <aside>
 
 ### 1) `my_agent/utils/nodes/`
-
----
 
 - **`router.py`**
     
@@ -234,8 +230,6 @@
     2. 실패 시 RULES 키워드 매칭 → 기본값 `GENERAL`
     3. `state["intent"] = intent`
 
----
-
 - **`sns.py` / `revisit.py` / `issue.py` / `general.py`** (구조 동일)
     
     **역할**
@@ -255,8 +249,6 @@
     1. LLM 분류 → 라벨 정규화(동의어 alias)
     2. 실패 시 RULES 키워드 매칭 → 기본값 `GENERAL`
     3. `state["intent"] = intent`
-
----
 
 - **`web_augment.py`**
     
@@ -285,9 +277,9 @@
 
 <aside>
 
-### 2) 공용 유틸·엔진
+<br>
 
----
+### 2) 공용 유틸·엔진
 
 - **`my_agent/utils/config.py`**
     
@@ -302,8 +294,6 @@
     - 토글: `CONFIRM_ON_MULTI`, `ENABLE_RELEVANCE_CHECK`, `ENABLE_MEMORY`
     - 웹검색: `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `SERPER_API_KEY`, `TAVILY_API_KEY`
     - 검색 파라미터(옵션): `SEARCH_TOPK`(기본 5), `SEARCH_RECENCY_DAYS`(기본 60), `SEARCH_TIMEOUT`(기본 12)
-
----
 
 - **`my_agent/utils/state.py`**
     
@@ -322,9 +312,7 @@
     - 웹 보강: `web_snippets`, `web_meta`
     - 제어/오류: `relevance_passed`, `retry_count`, `error`
     - 멀티턴: `messages`, `conversation_summary`
-
----
-
+     
 - **`my_agent/utils/tools.py`**
     
     **역할**
@@ -345,8 +333,6 @@
         - `check_relevance(state)` : 기본/인텐트별/구조/액션/금지어 검사
         - (보완) 웹 스니펫 존재 시 최소 인용 힌트 소프트 점검(하드-페일 아님)
 
----
-
 - **`my_agent/agent.py`**
     
     **역할**
@@ -366,8 +352,6 @@
     - `data_collector → feature_builder → web_augment`
     - `web_augment`: intent에 따라 `sns/revisit/issue/general`
     - 각 생성 노드 → `relevance_checker → {pass: END, fail: END}`
-
----
 
 - **`my_agent/utils/adapters.py`**
     
@@ -397,9 +381,9 @@
 
 <aside>
 
-### 3) MCP
+<br>
 
----
+### 3) MCP
 
 - `mcp/contracts.py`
 - `mcp/tools_web.py`
@@ -422,9 +406,9 @@
 
 <aside>
 
-### 4) 실행 스크립트
+<br>
 
----
+### 4) 실행 스크립트
 
 - **`streamlit_app.py`**
     
