@@ -208,7 +208,7 @@
 
 <aside>
 
-### 1) `my_agent/utils/nodes/`
+### 1) 노드
 
 - **`router.py`**
     
