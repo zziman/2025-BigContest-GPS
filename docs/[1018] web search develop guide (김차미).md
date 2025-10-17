@@ -1,6 +1,7 @@
 # [1018] web search develop guide (김차미)
 
 - 수정한 파일들
+
 | 파일 경로 | 내용 |
 |-----------|------|
 | requirements.txt | 검색 기능 구현에 필요한 라이브러리 추가 |
@@ -29,13 +30,15 @@
 ### 호출부
 - utils/nodes/web_augment.py
 
-'''resp = call_mcp_tool(
+```python
+resp = call_mcp_tool(
     "web_search",
     query=query,
     top_k=self.default_topk,
     recency_days=self.recency_days,
     rewrite_query=True,     # 검색 쿼리 품질 향상
     rerank="cosine"         # 기본 rerank 유지
-    )'''
+    )
+
 
 - 여기서 rerank 바꿀 수 있음 / 그다지 큰 부분은 아니라 config로 안 뺌!!
