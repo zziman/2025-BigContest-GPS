@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional, Tuple
 
 from .contracts import WebSearchOutput, WebDoc
 from my_agent.utils.config import (
-    TABILI_API_KEY, SEARCH_TIMEOUT,
+    TAVILY_API_KEY, SEARCH_TIMEOUT,
     DEFAULT_TOPK, DEFAULT_RECENCY_DAYS,
     GOOGLE_API_KEY, LLM_MODEL, LLM_TEMPERATURE,
 )
