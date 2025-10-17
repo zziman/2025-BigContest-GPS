@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# adapter_client.py
 """
 MCP 툴 직접 호출 (어댑터 우회)
 """

@@ -5,11 +5,14 @@ import time, json, re
 import urllib.parse as up
 import requests
 from typing import List, Dict, Any, Optional, Tuple
+from datetime import datetime, timedelta
 
 from .contracts import WebSearchOutput, WebDoc
 from my_agent.utils.config import (
-    TABILI_API_KEY, SEARCH_TIMEOUT,
+    SERPER_API_KEY, 
+    SEARCH_TIMEOUT,
     DEFAULT_TOPK, DEFAULT_RECENCY_DAYS,
+    # GOOGLE_API_KEY, LLM_MODEL, LLM_TEMPERATURE  # 이건 query rewrite 용도로 남기거나 제거 가능
     GOOGLE_API_KEY, LLM_MODEL, LLM_TEMPERATURE,
 )
 
@@ -23,7 +26,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 # Optional (SBERT / CrossEncoder)
 _HAS_SENTENCE_TRANSFORMERS = False
 try:
-    import torch  # for GPU check
+    import torch
     from sentence_transformers import SentenceTransformer, CrossEncoder
     _HAS_SENTENCE_TRANSFORMERS = True
 except Exception:
@@ -38,17 +41,15 @@ def _clip(s: str, n=300) -> str:
     s = re.sub(r"\s+", " ", s or "").strip()
     return s[:n]
 
-def _to_ts(published_at: str) -> float:
-    s = _norm(published_at)
+def _to_ts(date: str) -> float:
+    s = _norm(date)
     if not s:
         return 0.0
-    # ISO-like
     for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
         try:
             return time.mktime(time.strptime(s[:19], fmt))
         except Exception:
             pass
-    # RFC822
     try:
         from email.utils import parsedate_to_datetime
         return parsedate_to_datetime(s).timestamp()
@@ -61,8 +62,8 @@ def _apply_recency_filter(items: List[WebDoc], recency_days: int) -> List[WebDoc
     cutoff = time.time() - recency_days * 86400
     out: List[WebDoc] = []
     for d in items:
-        ts = _to_ts(d.get("published_at", ""))
-        if ts == 0.0 or ts >= cutoff:  # unknown dates keep (best-effort)
+        ts = _to_ts(d.get("date", ""))
+        if ts == 0.0 or ts >= cutoff:
             out.append(d)
     return out
 
@@ -77,7 +78,17 @@ def _merge_unique(docs1: List[WebDoc], docs2: List[WebDoc]) -> List[WebDoc]:
         merged.append(d)
     return merged
 
-#  Query Rewrite (Gemini) 
+def _add_date_filter(query: str, days: int = 90) -> str:
+    """
+    날짜 필터 추가 (ex: after:2024-10-01)
+    """
+    if "after:" in query:
+        return query
+    cutoff = datetime.now() - timedelta(days=days)
+    cutoff_str = cutoff.strftime("%Y-%m-%d")
+    return f"{query} after:{cutoff_str}"
+
+# Query Rewrite (기존처럼 유지)
 def _rewrite_query_gemini(query: str) -> str:
     prompt = f"""
             당신은 소상공인·자영업자를 돕는 마케팅 전문 검색어 생성기입니다.
@@ -86,7 +97,7 @@ def _rewrite_query_gemini(query: str) -> str:
             지침:
             - 마케팅/매출/고객/전략/사례/분석/상권/리뷰/홍보 같은 키워드를 포함하여 의도를 명확히 합니다.
             - 업종 및 지역 정보가 있으면 반영합니다.
-            - 대상: 영세・중소 사업자
+            - 대상: 영세·중소 사업자
             - 핵심 키워드 중심
             - OR, 따옴표 등 특수 기호 사용 금지.
             - 한국어로만, 8~15 단어, 한 줄만 출력. 추가 설명 금지.
@@ -105,57 +116,52 @@ def _rewrite_query_gemini(query: str) -> str:
         resp = llm.invoke(prompt)
         return _norm(resp.content)
     except Exception:
-        return query 
+        return query
 
-#  Provider: Tavily 
-def _tavily_search(q: str, top_k: int, time_range: str = "month", include_raw_content: bool = True, include_answer: bool = True) -> Tuple[str, List[WebDoc]]:
-    if not TABILI_API_KEY:
-        return "tavily", []
+# Serper 기반 웹 검색 함수
+def _serper_search(q: str, top_k: int) -> Tuple[str, List[WebDoc]]:
+    """
+    Serper API를 호출해서 Google의 organic 결과를 가져오는 함수
+    """
+    if not SERPER_API_KEY:
+        return "serper", []
     try:
-        url = "https://api.tavily.com/search"
-        headers = {"Authorization": f"Bearer {TABILI_API_KEY}", "Content-Type": "application/json"}
-        payload = {
-            "query": q,
-            "max_results": top_k,
-            "search_depth": "advanced",
-            "include_raw_content": include_raw_content,
-            "include_answer": include_answer,
-            "time_range": time_range,  # "day" | "week" | "month" | "year"
+        url = "https://google.serper.dev/search"
+        headers = {
+            "X-API-KEY": SERPER_API_KEY,
+            "Content-Type": "application/json",
         }
-        r = requests.post(url, headers=headers, data=json.dumps(payload), timeout=SEARCH_TIMEOUT)
-        r.raise_for_status()
-        j = r.json() or {}
-        data = j.get("results", []) or []
-        tavily_answer = _norm(j.get("answer") or "")
-
+        payload = {
+            "q": q,
+            "num": top_k,
+            # 추가 옵션 필요하면 넣기 (예: hl, gl 등)
+        }
+        resp = requests.post(url, headers=headers, json=payload, timeout=SEARCH_TIMEOUT)
+        resp.raise_for_status()
+        j = resp.json() or {}
+        organic = j.get("organic", [])  # 리스트
         docs: List[WebDoc] = []
-        for it in data:
-            link = _norm(it.get("url"))
-            # 넓게 커버: published_at 필드 보강 (URL 추출은 이번에 제외)
-            pub = _norm(
-                it.get("published_time")
-                or it.get("published_date")
-                or it.get("date")
-                or it.get("date_published")
-                or it.get("pub_date")
-                or it.get("publishedAt")
-                or ""
-            )
+        for it in organic:
+            link = _norm(it.get("link"))
+            title = _clip(_norm(it.get("title") or ""))
+            snippet = _clip(_norm(it.get("snippet") or ""))
+            # Serper은 published date 제공 안 할 수 있음 → 빈 문자열 또는 it.get("published")
+            pub = _norm(it.get("date") or it.get("published_date") or "")
             docs.append({
-                "title": _clip(_norm(it.get("title"))),
+                "title": title,
                 "url": link,
-                "snippet": _clip(_norm(it.get("content") or "")),
-                "raw_content": clean_raw_content(_clip(_norm(it.get("raw_content") or it.get("content") or ""), 1200)),
+                "snippet": snippet,
+                "raw_content": snippet,  # raw_content은 snippet 위주로 채움
                 "source": up.urlparse(link).netloc,
-                "published_at": pub,
-                "answer": tavily_answer if tavily_answer else _norm(it.get("answer") or ""),
-                "score": float(it.get("score", 0.0)) if isinstance(it.get("score", 0.0), (int, float)) else 0.8,
+                "date": pub,
+                "score": float(it.get("position") or 0.0),  # 순서 기반 점수로 대체 가능
             })
-        return "tavily", docs, (tavily_answer or None)
-    except Exception:
-        return "tavily", [], None
+        return "serper", docs
+    except Exception as e:
+        # 실패 시 빈 리스트 반환
+        return "serper", []
 
-#  Cleaning 
+# Cleaning 
 def _clean_results(docs: List[WebDoc]) -> List[WebDoc]:
     seen = set()
     out: List[WebDoc] = []
@@ -165,7 +171,7 @@ def _clean_results(docs: List[WebDoc]) -> List[WebDoc]:
             continue
         title = _clip(re.sub(r"<.*?>", "", d.get("title", "") or ""))
         snippet = _clip(re.sub(r"<.*?>", "", d.get("snippet", "") or ""))
-        if len(title) < 3 or len(snippet) < 15:
+        if len(title) < 3 or len(snippet) < 5:
             continue
         d["title"] = title
         d["snippet"] = snippet
@@ -173,23 +179,7 @@ def _clean_results(docs: List[WebDoc]) -> List[WebDoc]:
         out.append(d)
     return out
 
-def clean_raw_content(text: str) -> str:
-    if not text:
-        return ""
-    # 1. HTML 태그 제거
-    text = re.sub(r"<[^>]+>", " ", text)
-    # 2. URL 제거
-    text = re.sub(r"http[s]?://\S+", " ", text)
-    # 3. Markdown/이미지 태그 제거
-    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text)  # ![]( )
-    text = re.sub(r"\[[^\]]*\]\([^)]*\)", " ", text)   # []( )
-    # 4. 잡다한 특수문자/이모지 제거
-    text = re.sub(r"[^0-9가-힣a-zA-Z.,!?()\s]", " ", text)
-    # 5. 공백 정리
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
-
-#  Rerankers 
+# Rerankers
 def _rerank_cosine(docs: List[WebDoc], query: str) -> List[WebDoc]:
     if not docs:
         return docs
@@ -197,8 +187,9 @@ def _rerank_cosine(docs: List[WebDoc], query: str) -> List[WebDoc]:
     try:
         vec = TfidfVectorizer().fit_transform([query] + texts)
         scores = cosine_similarity(vec[0:1], vec[1:]).flatten()
-        ranked = sorted(zip(docs, scores), key=lambda x: x[1], reverse=True)
-        return [d for d, _ in ranked]
+        for d, s in zip(docs, scores):
+            d["score"] = float(s)
+        return sorted(docs, key=lambda d: d["score"], reverse=True)
     except Exception:
         return docs
 
@@ -225,8 +216,6 @@ def _rerank_sbert(docs: List[WebDoc], query: str) -> List[WebDoc]:
     if not docs:
         return docs
     if not (_HAS_SENTENCE_TRANSFORMERS and _has_gpu()):
-        # GPU 없으면 cosine rerank 사용
-        print('[디버깅] _rerank_sbert 안됨')
         return _rerank_cosine(docs, query)
     try:
         _ensure_sbert()
@@ -234,31 +223,28 @@ def _rerank_sbert(docs: List[WebDoc], query: str) -> List[WebDoc]:
         emb_q = _SBERT_MODEL.encode([query], convert_to_tensor=True, normalize_embeddings=True)
         emb_d = _SBERT_MODEL.encode(texts, convert_to_tensor=True, normalize_embeddings=True)
         scores = (emb_q @ emb_d.T).squeeze(0).tolist()
-        ranked = sorted(zip(docs, scores), key=lambda x: x[1], reverse=True)
-        return [d for d, _ in ranked]
+        for d, s in zip(docs, scores):
+            d["score"] = float(s)
+        return sorted(docs, key=lambda d: d["score"], reverse=True)
     except Exception:
-        print('[디버깅] _rerank_sbert 안됨')
         return _rerank_cosine(docs, query)
 
 def _rerank_cross(docs: List[WebDoc], query: str) -> List[WebDoc]:
     if not docs:
         return docs
     if not (_HAS_SENTENCE_TRANSFORMERS and _has_gpu()):
-        # GPU 없으면 cosine rerank 사용
-        print('[디버깅] _rerank_cross 안됨')
         return _rerank_cosine(docs, query)
     try:
         _ensure_cross()
         pairs = [(query, (d.get("title", "") + " " + d.get("snippet", "")).strip()) for d in docs]
         scores = _CROSS_MODEL.predict(pairs).tolist()
-        ranked = sorted(zip(docs, scores), key=lambda x: x[1], reverse=True)
-        return [d for d, _ in ranked]
+        for d, s in zip(docs, scores):
+            d["score"] = float(s)
+        return sorted(docs, key=lambda d: d["score"], reverse=True)
     except Exception:
-        print('[디버깅] _rerank_cross 안됨')
         return _rerank_cosine(docs, query)
 
 def _apply_rerank(docs: List[WebDoc], query: str, rerank: str) -> List[WebDoc]:
-    # CPU-only 환경에서는 무조건 cosine
     if rerank in ("sbert", "cross") and not _has_gpu():
         rerank = "cosine"
     if rerank == "sbert":
@@ -268,12 +254,11 @@ def _apply_rerank(docs: List[WebDoc], query: str, rerank: str) -> List[WebDoc]:
     return _rerank_cosine(docs, query)
 
 def _sort_by_recency_then_score(docs: List[WebDoc]) -> List[WebDoc]:
-    # rank_score(유사도) 우선, 같은 급에서는 최신순
     def key(d):
-        return (-float(d.get("rank_score", 0.0)), -_to_ts(d.get("published_at", "")))
+        return (-float(d.get("score", 0.0)), -_to_ts(d.get("date", "")))
     return sorted(docs, key=key)
 
-#  Public API 
+# Public API 
 def web_search(query: str,
                top_k: int = DEFAULT_TOPK,
                recency_days: int = DEFAULT_RECENCY_DAYS,
@@ -283,7 +268,7 @@ def web_search(query: str,
                debug: bool = False) -> WebSearchOutput:
 
     t0 = time.time()
-    provider = "tavily"
+    provider = "serper"
     original_query = _norm(query)
     used_query = original_query
     retry_count = 0
@@ -292,36 +277,33 @@ def web_search(query: str,
     if not original_query:
         return _build_output(False, provider, [], original_query, used_query, retry_count, fallback_used, t0)
 
-    # 쿼리 재작성
     if rewrite_query:
         used_query = _rewrite_query_gemini(original_query)
         if debug:
             print(f"[rewrite] '{original_query}' -> '{used_query}'")
 
-    # Search
-    # 1차: month
-    _, r_month, tavily_answer = _tavily_search(used_query, top_k, time_range="month", include_raw_content=True, include_answer=True)
-    # 부족하면 2차: year (month 유지 + year로 보충)
-    r_combined = r_month[:]
-    if len(r_month) <= 5:
+    used_query = _add_date_filter(used_query, recency_days)
+    # 1차 검색
+    _, docs = _serper_search(used_query, top_k)
+
+    # 결과 부족
+    if deep_search and len(docs) < top_k:
         retry_count += 1
         fallback_used = True
-        _, r_year, tavily_answer_y = _tavily_search(used_query, max(top_k, 10), time_range="year", include_raw_content=True, include_answer=True)
-        if not tavily_answer and tavily_answer_y:
-            tavily_answer = tavily_answer_y
-        r_combined = _merge_unique(r_month, r_year)
+        # 쿼리 재작성 후 다시 검색
+        fallback_query = _rewrite_query_gemini(original_query + " 매출 회복 사례 고객 유입 전략 소상공인")
+        fallback_query = _add_date_filter(fallback_query, recency_days + 180)
+        _, docs2 = _serper_search(fallback_query, top_k)
+        docs = _merge_unique(docs, docs2)
 
-    # Cleaning + Recency filter
-    results = _clean_results(r_combined)
+    results = _clean_results(docs)
     results = _apply_recency_filter(results, recency_days)
-
-    # Rerank
     results = _apply_rerank(results, used_query, rerank)[:top_k]
     results = _sort_by_recency_then_score(results)[:top_k]
 
     return _build_output(True, provider, results, original_query, used_query, retry_count, fallback_used, t0)
 
-#  Output Builder 
+# Output Builder
 def _build_output(success, provider_used, docs, raw_query, query_used, retry_count, fallback_used, t0):
     return {
         "success": success,
@@ -337,12 +319,9 @@ def _build_output(success, provider_used, docs, raw_query, query_used, retry_cou
         },
     }
 
-#  Local Test 
+# Local Test
 if __name__ == "__main__":
-    # 다양한 모드 테스트
     print("[cosine] web_search(분식집 손님 줄었어, rerank=cosine")
     result = web_search("분식집 손님 줄었어", rerank="cosine", debug=True)
-    # print("[sbert ]", web_search("치킨집 매출 하락 원인", rerank="sbert", debug=True))
-    # print("[cross ]", web_se로arch("카페 상권 분석 마케팅 전략", rerank="cross", debug=True))
     with open("websearch_result.json", "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
