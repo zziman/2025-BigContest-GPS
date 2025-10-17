@@ -57,9 +57,12 @@ class LoadRegionDataOutput(TypedDict):
 
 class WebSearchInput(TypedDict, total=False):
     query: str
-    provider: Literal["naver", "surfer", "tabili", "auto"]
     top_k: int
     recency_days: int
+    deep_search: bool
+    rewrite_query: bool
+    rerank: Literal["cosine", "sbert", "cross"]
+    debug: bool
 
 class WebDoc(TypedDict, total=False):
     title: str
@@ -93,14 +96,14 @@ def validate_web_search_input(data: dict) -> Tuple[bool, Optional[str]]:
     q = data.get("query")
     if not isinstance(q, str) or not q.strip():
         return False, "query must be non-empty string"
-    provider = data.get("provider", "auto")
-    if provider not in {"naver", "surfer", "tabili", "auto"}:
-        return False, "provider must be one of: naver/surfer/tabili/auto"
     top_k = int(data.get("top_k", 5))
-    if top_k <= 0 or top_k > 25:
-        return False, "top_k must be in 1..25"
+    if not (1 <= top_k <= 25):
+        return False, "top_k must be 1~25"
     recency_days = int(data.get("recency_days", 60))
     if recency_days < 0:
         return False, "recency_days must be >= 0"
+    rerank = data.get("rerank", "cosine")
+    if rerank not in {"cosine", "sbert", "cross"}:
+        return False, "rerank must be one of: cosine/sbert/cross"
     return True, None
 

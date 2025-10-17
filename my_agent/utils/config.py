@@ -45,7 +45,7 @@ GOOGLE_API_KEY = _get_config("GOOGLE_API_KEY")
 NAVER_CLIENT_ID     = _get_config("NAVER_CLIENT_ID", "")
 NAVER_CLIENT_SECRET = _get_config("NAVER_CLIENT_SECRET", "")
 SERPER_API_KEY      = _get_config("SERPER_API_KEY", "")
-TABILI_API_KEY      = _get_config("TABILI_API_KEY", "")
+TAVILY_API_KEY      = _get_config("TAVILY_API_KEY", "")
 
 # ═══════════════════════════════════════════════════════════
 # 데이터 경로
