@@ -1,10 +1,8 @@
-# [1014] 2025 BigContest – AI 비밀상담소 (PoC)
+# [1018] 2025 BigContest – AI 비밀상담소 (PoC)
 
 소상공인 가맹점 데이터를 기반으로 전략 초안을 자동 생성하는 에이전트.
 LangGraph로 멀티턴·분기·재시도를 제어하고, MCP 툴로 CSV 데이터를 조회한다.
 CLI(로컬 테스트)와 Streamlit UI를 제공한다.
-
-![파이프라인](assets/diagram_1015.png)
 
 <br>
 
@@ -18,7 +16,10 @@ CLI(로컬 테스트)와 Streamlit UI를 제공한다.
 │  └─ utils/
 │     ├─ __init__.py
 │     ├─ config.py                     
-│     ├─ state.py                      
+│     ├─ state.py
+│     ├─ prompt_builder.py
+│     ├─ postprocess.py
+│     ├─ chat_history.py                      
 │     ├─ tools.py                      
 │     └─ nodes/
 │        ├─ router.py                  
@@ -48,7 +49,7 @@ CLI(로컬 테스트)와 Streamlit UI를 제공한다.
 ├─ .streamlit/
 │  └─ secrets.toml                     
 ├─ .env                                
-└─ requirements.txt                    
+└─ requirements.txt                  
 ```
 
 <br>
@@ -126,8 +127,6 @@ TOML
 # 5) 앱 실행 (Streamlit)
 uv run streamlit run streamlit_app.py
 
-# 6) (선택) 로컬 CLI 테스트
-# uv run python local_test.py
 ```
 
 

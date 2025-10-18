@@ -1,10 +1,13 @@
 # ═══════════════════════════════════════════════════════════
 # LangChain Core
 # ═══════════════════════════════════════════════════════════
-langchain>=0.1.0
-langchain-core>=0.1.0
-langchain-google-genai>=1.0.0
-langgraph>=0.0.30
+langchain==0.3.27
+langchain-core==0.3.79
+langchain-community==0.3.27
+langsmith>=0.3.45,<1.0.0
+
+# Google Gemini (LangChain 통합)
+langchain-google-genai==2.1.12
 
 # ═══════════════════════════════════════════════════════════
 # MCP (Model Context Protocol)
@@ -25,6 +28,8 @@ duckdb>=0.9.0
 streamlit>=1.30.0
 Pillow>=10.0.0
 plotly>=5.20.0
+streamlit-option-menu
+streamlit-chat
 
 # ═══════════════════════════════════════════════════════════
 # Testing
