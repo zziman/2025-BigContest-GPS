@@ -44,8 +44,8 @@ def _get_config(key: str, default=None):
 GOOGLE_API_KEY = _get_config("GOOGLE_API_KEY")
 NAVER_CLIENT_ID     = _get_config("NAVER_CLIENT_ID", "")
 NAVER_CLIENT_SECRET = _get_config("NAVER_CLIENT_SECRET", "")
-SURFER_API_KEY      = _get_config("SURFER_API_KEY", "")
-TABILI_API_KEY      = _get_config("TABILI_API_KEY", "")
+SERPER_API_KEY      = _get_config("SERPER_API_KEY", "")
+TAVILY_API_KEY      = _get_config("TAVILY_API_KEY", "")
 
 # ═══════════════════════════════════════════════════════════
 # 데이터 경로
@@ -68,7 +68,7 @@ ADMIN_DONG_CSV = _get_config(
 # ═══════════════════════════════════════════════════════════
 SEARCH_TIMEOUT        = float(_get_config("SEARCH_TIMEOUT", "12"))
 DEFAULT_TOPK          = int(_get_config("SEARCH_TOPK", "5"))
-DEFAULT_RECENCY_DAYS  = int(_get_config("SEARCH_RECENCY_DAYS", "60"))
+DEFAULT_RECENCY_DAYS  = int(_get_config("SEARCH_RECENCY_DAYS", "90"))
 
 # ═══════════════════════════════════════════════════════════
 # MCP 설정
