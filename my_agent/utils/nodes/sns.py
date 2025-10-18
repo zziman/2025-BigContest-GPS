@@ -5,7 +5,8 @@ SNS 추천 노드
 from langchain_google_genai import ChatGoogleGenerativeAI
 from my_agent.utils.config import GOOGLE_API_KEY, LLM_MODEL, LLM_TEMPERATURE
 from my_agent.utils.state import GraphState
-from my_agent.utils.tools import build_base_context, build_signals_context, postprocess_response
+from my_agent.utils.prompt_builder import build_base_context, build_signals_context
+from my_agent.utils.postprocess import postprocess_response
 
 def build_web_context(state: GraphState, limit: int = 3) -> str:
     snips = state.get("web_snippets") or []
