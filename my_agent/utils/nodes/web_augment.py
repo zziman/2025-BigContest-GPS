@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# web_augment.py
 from typing import Dict, Any, List
 from mcp.adapter_client import call_mcp_tool
 
@@ -24,8 +25,12 @@ class WebAugmentNode:
             return state
 
         resp = call_mcp_tool(
-            "web_search", query=query, provider="auto",
-            top_k=self.default_topk, recency_days=self.recency_days
+            "web_search",
+            query=query,
+            top_k=self.default_topk,
+            recency_days=self.recency_days,
+            rewrite_query=True,     # 검색 쿼리 품질 향상
+            rerank="cosine"         # 기본 rerank 유지
         )
         if not resp.get("success"):
             return state
