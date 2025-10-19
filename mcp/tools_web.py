@@ -1,5 +1,6 @@
-# -*- coding: utf-8 -*-
 # mcp/tools_web.py
+
+# -*- coding: utf-8 -*-
 
 import time, json, re
 import urllib.parse as up
@@ -109,11 +110,11 @@ def _rewrite_query_gemini(query: str) -> str:
 
 #  Provider: Tavily 
 def _tavily_search(q: str, top_k: int, time_range: str = "month", include_raw_content: bool = True, include_answer: bool = True) -> Tuple[str, List[WebDoc]]:
-    if not TABILI_API_KEY:
+    if not TAVILY_API_KEY:
         return "tavily", []
     try:
         url = "https://api.tavily.com/search"
-        headers = {"Authorization": f"Bearer {TABILI_API_KEY}", "Content-Type": "application/json"}
+        headers = {"Authorization": f"Bearer {TAVILY_API_KEY}", "Content-Type": "application/json"}
         payload = {
             "query": q,
             "max_results": top_k,
@@ -346,3 +347,4 @@ if __name__ == "__main__":
     # print("[cross ]", web_se로arch("카페 상권 분석 마케팅 전략", rerank="cross", debug=True))
     with open("websearch_result.json", "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
+    # python -m mcp.tools_web

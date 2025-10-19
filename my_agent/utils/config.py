@@ -1,3 +1,5 @@
+# my_agent/utils/config.py
+
 # -*- coding: utf-8 -*-
 """
 중앙 설정 관리: Streamlit secrets.toml + .env 지원
@@ -52,11 +54,11 @@ TAVILY_API_KEY      = _get_config("TAVILY_API_KEY", "")
 # ═══════════════════════════════════════════════════════════
 FRANCHISE_CSV = _get_config(
     "FRANCHISE_CSV",
-    (DATA_DIR / "franchise_data.csv").as_posix()
+    (DATA_DIR / "franchise_data_addmetrics.csv").as_posix()
 )
 BIZ_AREA_CSV = _get_config(
     "BIZ_AREA_CSV",
-    (DATA_DIR / "biz_area.csv").as_posix()
+    (DATA_DIR / "biz_area_addmetrics.csv").as_posix()
 )
 ADMIN_DONG_CSV = _get_config(
     "ADMIN_DONG_CSV",
