@@ -1,3 +1,5 @@
+# mcp/contracts.py
+
 # -*- coding: utf-8 -*-
 """
 MCP 툴 I/O 계약 정의 + 경량 검증
