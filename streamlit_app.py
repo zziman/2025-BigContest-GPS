@@ -1,3 +1,5 @@
+# streamlit_app.py
+
 # -*- coding: utf-8 -*-
 """
 Streamlit UI (Home: Dashboard, Chatbot separated in sidebar menu)
@@ -443,7 +445,6 @@ else:
             try:
                 result = run_one_turn(
                     user_query=query,
-                    store_name=query,
                     thread_id=st.session_state.thread_id,
                 )
                 status = result.get("status", "ok")

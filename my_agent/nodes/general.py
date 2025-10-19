@@ -21,9 +21,7 @@ class GeneralNode:
         self.llm = ChatGoogleGenerativeAI(
             model=LLM_MODEL,
             google_api_key=GOOGLE_API_KEY,
-            temperature=LLM_TEMPERATURE,
-            max_output_tokens=1400
-        )
+            temperature=LLM_TEMPERATURE)
 
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         user_query = state.get("user_query", "").strip()
