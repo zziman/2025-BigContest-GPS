@@ -1,4 +1,4 @@
-# [1018] 2025 BigContest – AI 비밀상담소 (PoC)
+# [1019] 2025 BigContest – AI 비밀상담소 (PoC)
 
 소상공인 가맹점 데이터를 기반으로 전략 초안을 자동 생성하는 에이전트.
 LangGraph로 멀티턴·분기·재시도를 제어하고, MCP 툴로 CSV 데이터를 조회한다.
@@ -65,65 +65,26 @@ source .venv/bin/activate    # Windows: .\.venv\Scripts\Activate.ps1
 uv pip install -r requirements.txt
 
 # 3) 시크릿(secrets.toml) 생성 — 권장 방식
-mkdir -p .streamlit
-cat > .streamlit/secrets.toml <<'TOML'
 # --- API Keys ---
-GOOGLE_API_KEY = "your_key"                 # ★ 필수 (Router/노드가 LLM 전용)
-NAVER_CLIENT_ID = "your_naver_client_id"    # 네이버 검색용
+GOOGLE_API_KEY = "your_key"                 
+NAVER_CLIENT_ID = "your_naver_client_id"
 NAVER_CLIENT_SECRET = "your_naver_secret"
-SURFER_API_KEY = "your_serper_api_key"      # Serper(서퍼) API
-TABILI_API_KEY = "your_tavily_api_key"      # Tavily(타빌리) API
-
-# --- 데이터 경로 ---
-FRANCHISE_CSV = "./data/franchise_data.csv"
-BIZ_AREA_CSV = "./data/biz_area.csv"
-ADMIN_DONG_CSV = "./data/admin_dong.csv"
+TAVILY_API_KEY = "your_key"                         
 
 # --- 검색 파라미터 ---
-SEARCH_TIMEOUT = 12              # 초 단위
-SEARCH_TOPK = 5                  # 상위 K 결과
-SEARCH_RECENCY_DAYS = 60         # 최근 N일 가중/필터
+SEARCH_TIMEOUT = 12
+SEARCH_TOPK = 5
+SEARCH_RECENCY_DAYS = 60
 
 # --- 정책/토글 ---
+MCP_ENABLED = 1
 CONFIRM_ON_MULTI = 0
 LLM_MODEL = "gemini-2.5-flash"
 LLM_TEMPERATURE = 0.2
 ENABLE_RELEVANCE_CHECK = true
 ENABLE_MEMORY = true
 
-# --- (선택) gRPC 로그 억제 ---
-GRPC_VERBOSITY = "ERROR"
-GRPC_TRACE = ""
-TOML
-
-# 4) (선택) .env로 설정하고 싶다면 — 로컬 개발에만 사용 권장
-# cat > .env <<'ENV'
-# GOOGLE_API_KEY=your_key
-# NAVER_CLIENT_ID=your_naver_client_id
-# NAVER_CLIENT_SECRET=your_naver_secret
-# SURFER_API_KEY=your_serper_api_key
-# TABILI_API_KEY=your_tavily_api_key
-#
-# FRANCHISE_CSV=./data/franchise_data.csv
-# BIZ_AREA_CSV=./data/biz_area.csv
-# ADMIN_DONG_CSV=./data/admin_dong.csv
-#
-# SEARCH_TIMEOUT=12
-# SEARCH_TOPK=5
-# SEARCH_RECENCY_DAYS=60
-#
-# MCP_ENABLED=1
-# CONFIRM_ON_MULTI=0
-# LLM_MODEL=gemini-2.5-flash
-# LLM_TEMPERATURE=0.2
-# ENABLE_RELEVANCE_CHECK=true
-# ENABLE_MEMORY=true
-#
-# GRPC_VERBOSITY=ERROR
-# GRPC_TRACE=
-# ENV
-
-# 5) 앱 실행 (Streamlit)
+# 4) 앱 실행 (Streamlit)
 uv run streamlit run streamlit_app.py
 
 ```
