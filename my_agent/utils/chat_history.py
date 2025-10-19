@@ -1,4 +1,6 @@
-# -*- coding: utf-8 -*-
+# my_agent/utils/chat_history.py
+ 
+#  -*- coding: utf-8 -*-
 """
 채팅 히스토리 JSON 저장/로드
 """
