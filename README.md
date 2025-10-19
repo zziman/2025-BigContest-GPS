@@ -65,6 +65,8 @@ source .venv/bin/activate    # Windows: .\.venv\Scripts\Activate.ps1
 uv pip install -r requirements.txt
 
 # 3) 시크릿(secrets.toml) 생성 — 권장 방식
+mkdir -p .streamlit
+cat > .streamlit/secrets.toml <<'TOML'
 # --- API Keys ---
 GOOGLE_API_KEY = "your_key"                 
 NAVER_CLIENT_ID = "your_naver_client_id"
