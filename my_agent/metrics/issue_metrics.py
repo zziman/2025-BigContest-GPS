@@ -36,10 +36,14 @@ PEER_COMPARE_FEATURES = [
 
 
 def _safe(x, default=0.0):
-    try:
-        return float(x) if x not in [None, ""] else default
-    except:
+    # 빈 문자열 또는 None 처리
+    if x in [None, ""]:
         return default
+    # 숫자 타입일 경우 float 변환
+    if isinstance(x, (int, float)):
+        return float(x)
+    # 문자열이나 기타 타입은 그대로 반환
+    return x
 
 
 def build_issue_metrics(store_num: str) -> Dict[str, Any]:
