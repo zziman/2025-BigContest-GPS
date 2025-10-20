@@ -16,7 +16,7 @@ from my_agent.utils.tools import resolve_store, load_store_and_area_data
 
 from my_agent.metrics.main_metrics import build_main_metrics
 from my_agent.metrics.strategy_metrics import build_strategy_metrics
-# from my_agent.metrics.revisit_metrics import build_revisit_metrics
+from my_agent.metrics.revisit_metrics import build_revisit_metrics
 
 
 class RevisitNode:
@@ -45,9 +45,12 @@ class RevisitNode:
             store_id = state["store_id"]
             # 각 지표 빌드 (실패해도 나머지 진행)
             try:
-                m_main = build_main_metrics(store_id), "main_metrics"
-                if m_main:
-                    metrics["main_metrics"] = m_main
+                res_main = build_main_metrics(store_id)  # 예: {"main_metrics": {...}, "상권_단위_정보": {...}}
+                if isinstance(res_main, dict):
+                    if "main_metrics" in res_main and res_main["main_metrics"]:
+                        metrics["main_metrics"] = res_main["main_metrics"]
+                    if "상권_단위_정보" in res_main and res_main["상권_단위_정보"]:
+                        metrics["상권_단위_정보"] = res_main["상권_단위_정보"]
             except Exception:
                 pass
 
@@ -98,7 +101,7 @@ class RevisitNode:
 3. 재방문 유도 전략 (실행 가능하고 구체적으로)
 4. 기대 효과
         """
-
+        
         # 4. LLM 호출
         response = self.llm.invoke(prompt).content
         state["error"] = None
