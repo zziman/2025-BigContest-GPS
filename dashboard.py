@@ -1,385 +1,481 @@
 # -*- coding: utf-8 -*-
 """
-Adapter: streamlit_app.py가 기대하는 대시보드 API를 제공
-- dashboard_viz.py 에 있는 코드/데이터를 활용하여 필요한 함수만 노출
+대시보드 데이터 로직 및 시각화
 """
+import io
+import csv
 import re
 import numpy as np
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime
+import plotly.graph_objects as go
+import plotly.express as px
 
-# ───────── 유틸 ─────────
+# ==== THEME ====
+THEME_MAIN  = "#7742e3"
+THEME_DARK  = "#5b2fc7"
+THEME_LIGHT = "#d9ccff"
+THEME_LINE  = "#e6e0fb"
+THEME_INK   = "#111827"
+THEME_MUTED = "#6b7280"
+
+# ========= 유틸리티 =========
+def smart_read_csv(path, expect_cols=None, max_bytes=3_000_000):
+    enc_candidates = ["utf-8-sig", "utf-8", "cp949", "euc-kr"]
+    seps = [",", "\t", "|", ";"]
+    for enc in enc_candidates:
+        for sep in seps:
+            try:
+                df = pd.read_csv(path, sep=sep, encoding=enc, engine="python", quoting=csv.QUOTE_MINIMAL)
+                if expect_cols and not set(expect_cols).issubset(df.columns):
+                    continue
+                return df, {"encoding": enc, "sep": sep}
+            except Exception:
+                pass
+    raise RuntimeError(f"smart_read_csv 실패: {path}")
+
 def to_month_robust(s):
-    if pd.isna(s): return pd.NaT
+    if pd.isna(s):
+        return pd.NaT
     if isinstance(s, (pd.Timestamp, datetime)):
         return pd.Timestamp(s).to_period('M').to_timestamp()
     s = str(s).strip()
     digits = "".join(ch for ch in s if ch.isdigit())
     if len(digits) >= 6:
-        y = int(digits[:4]); m = int(digits[4:6])
+        y, m = int(digits[:4]), int(digits[4:6])
         if 1 <= m <= 12:
             return pd.Timestamp(y, m, 1)
     dt = pd.to_datetime(s, errors="coerce")
-    return (pd.Timestamp(dt).to_period('M').to_timestamp()
-            if pd.notna(dt) else pd.NaT)
+    return pd.Timestamp(dt).to_period('M').to_timestamp() if pd.notna(dt) else pd.NaT
 
 def ensure_dt(df):
-    if "기준년월" not in df.columns:
-        raise KeyError("CSV에 '기준년월' 컬럼이 없습니다.")
-    df = df.copy()
     df["dt"] = df["기준년월"].apply(to_month_robust)
-    if df["dt"].notna().sum() == 0:
-        def hard(s):
-            s = str(s)
-            ds = "".join(ch for ch in s if ch.isdigit())
-            if len(ds) >= 6:
-                y, m = int(ds[:4]), int(ds[4:6])
-                if 1<=m<=12: return pd.Timestamp(y, m, 1)
-            return pd.NaT
-        df["dt"] = df["기준년월"].apply(hard)
     return df
 
-def parse_bin_mid(v):
-    if pd.isna(v): return np.nan
-    if isinstance(v, (int,float,np.number)): return float(v)
-    s = str(v).strip()
-    m = re.search(r"(\d+)\s*-\s*(\d+)", s)
-    if not m: return np.nan
-    return (float(m.group(1)) + float(m.group(2))) / 2.0
+def clean_str(s):
+    if pd.isna(s): return s
+    return str(s).replace("\u200b", "").strip()
 
-def get_num(row, col, bin_col=None):
-    v = row.get(col, np.nan)
-    if pd.notna(v):
-        try: return float(v)
-        except: pass
-    if bin_col:
-        return parse_bin_mid(row.get(bin_col))
-    return np.nan
+def clean_str_col(df, col):
+    if col in df.columns:
+        df[col] = df[col].map(clean_str)
 
+def zscore(arr):
+    arr = np.asarray(arr, dtype=float)
+    m, sd = np.nanmean(arr), np.nanstd(arr)
+    if (sd == 0) or np.isnan(sd): return np.zeros_like(arr)
+    return (arr - m) / sd
+
+def pct_rank(series, val):
+    if series is None or pd.isna(val): return np.nan
+    s = pd.Series(series, dtype="float64").dropna()
+    if s.empty: return np.nan
+    return (s < float(val)).mean() * 100.0
+
+def as_pct(val):
+    if pd.isna(val): return np.nan
+    try:
+        v = float(val)
+        if 0 <= v <= 1.0: return v * 100.0
+        return v
+    except Exception:
+        return np.nan
+
+def as_pct_series(series):
+    if series is None: return None
+    return series.apply(as_pct)
+
+# ========= 데이터 로드 =========
+def load_all_data(franchise_csv, biz_area_csv):
+    store_need = ["기준년월", "가맹점_구분번호", "업종", "상권_지리"]
+    trade_need = ["기준년월", "업종", "상권_지리"]
+    store, _ = smart_read_csv(franchise_csv, expect_cols=store_need)
+    trade, _ = smart_read_csv(biz_area_csv, expect_cols=trade_need)
+    store = ensure_dt(store)
+    trade = ensure_dt(trade)
+    for df in (store, trade):
+        for col in ("업종", "상권_지리"):
+            clean_str_col(df, col)
+    store["MCT_KEY"] = store["가맹점_구분번호"].map(clean_str)
+    return store, trade
+
+# ========= 컨텍스트 계산 =========
 def pick_latest_row(df, dt_target, upjong=None, key_col=None, key_val=None):
     q = df.copy()
-    if upjong is not None and "업종" in q.columns:
+    if upjong and "업종" in q.columns:
         q = q[q["업종"].astype(str) == str(upjong)]
-    if key_col and (key_col in q.columns):
+    if key_col and key_col in q.columns:
         q = q[q[key_col].astype(str) == str(key_val)]
-    if q.empty:
-        return pd.Series(), "no_match_condition"
+    if q.empty: return pd.Series(), "no_match"
     same = q[q["dt"] == dt_target]
-    if not same.empty:
-        return same.sort_values("dt").iloc[-1], "match_same_dt"
+    if not same.empty: return same.sort_values("dt").iloc[-1], "match_same_dt"
     past = q[q["dt"] < dt_target]
-    if not past.empty:
-        return past.sort_values("dt").iloc[-1], "fallback_past_dt"
-    latest = q.sort_values("dt").iloc[-1]
-    return latest, "fallback_latest_any"
+    if not past.empty: return past.sort_values("dt").iloc[-1], "fallback_past_dt"
+    return q.sort_values("dt").iloc[-1], "fallback_latest"
 
 def pick_peers(df, dt_target, upjong, trade_key):
-    base = df[(df["업종"].astype(str)==str(upjong)) & (df["상권_지리"].astype(str)==str(trade_key))]
-    if base.empty: return base, "peer_no_key_match"
+    base = df[(df["업종"].astype(str) == str(upjong)) & (df["상권_지리"].astype(str) == str(trade_key))]
+    if base.empty: return base, "no_peer"
     p = base[base["dt"] == dt_target]
-    if not p.empty: return p, "peer_same_dt"
+    if not p.empty: return p, "same_dt"
     p = base[base["dt"] < dt_target]
-    if not p.empty: return p.sort_values("dt").tail(9999), "peer_past_dt"
-    return base.sort_values("dt").tail(9999), "peer_latest_any"
+    if not p.empty: return p.tail(9999), "past"
+    return base.tail(9999), "latest"
 
-# ───────── 필수 API ─────────
-# dashboard.py
-
-def load_all_data(fr_path=None, bz_path=None, ad_path=None):
-    """
-    ✅ config 기본값 사용 (경로를 명시하지 않으면 config에서 자동 로드)
-    반환값: (fr, bz) - 2개만 반환 (ad는 사용하지 않음)
-    """
-    # 경로가 주어지지 않으면 config에서 가져옴
-    fr_path = fr_path or CFG.FRANCHISE_CSV
-    bz_path = bz_path or CFG.BIZ_AREA_CSV
-    
-    fr = ensure_dt(pd.read_csv(fr_path, low_memory=False))
-    bz = ensure_dt(pd.read_csv(bz_path, low_memory=False))
-    
-    if "가맹점_구분번호" not in fr.columns:
-        raise KeyError("franchise_data.csv 에 '가맹점_구분번호'가 없습니다.")
-    fr["MCT_KEY"] = fr["가맹점_구분번호"].astype(str).str.strip()
-    
-    # ✅ 텍스트 정리 (fr, bz만)
-    for df in (fr, bz):
-        for c in ("업종","상권_지리","행정동","행정동_코드_명"):
-            if c in df.columns:
-                df[c] = df[c].astype(str).str.replace("\u200b","").str.strip()
-    
-    # ✅ 행정동 정규화 (fr만)
-    fr["행정동_norm"] = fr.get("행정동", pd.Series(index=fr.index, dtype=object)).astype(str).str.split().str[-1]
-    
-    return fr, bz  # ✅ 2개만 반환
-
-def compute_context(fr, bz, ad, store_id):
-    """
-    가맹점 컨텍스트 계산
-    
-    Args:
-        fr: franchise DataFrame
-        bz: biz_area DataFrame
-        ad: admin_dong DataFrame (사용 안 함, 호환성 유지)
-        store_id: 가맹점_구분번호
-    
-    Returns:
-        (dfm, row_now, peers, tr_row, dn_row)
-        - dfm: 해당 가맹점의 전체 시계열 데이터
-        - row_now: 최신 행
-        - peers: 동종·동상권 피어 데이터
-        - tr_row: 상권 데이터 (1행)
-        - dn_row: 행정동 데이터 (빈 Series, 사용 안 함)
-    """
-    dfm = fr[fr["MCT_KEY"] == str(store_id)].copy()
-    if dfm.empty:
-        raise ValueError(f"선택한 가맹점({store_id}) 데이터가 없습니다.")
-    
+def compute_context(store, trade, admin_dong, store_id):
+    dfm = store[store["MCT_KEY"] == str(store_id)].copy()
+    if dfm.empty: raise ValueError(f"매장 ID({store_id}) 데이터 없음.")
     latest_dt = dfm["dt"].dropna().max()
     cand = dfm[dfm["dt"] == latest_dt]
-    if cand.empty:
-        cand = dfm.sort_values("dt").tail(1)
     row_now = cand.iloc[0]
-    
     upjong = str(row_now.get("업종", ""))
     trade_key = str(row_now.get("상권_지리", ""))
-    
-    # 피어 및 상권 데이터 조회
-    peers, _ = pick_peers(fr, row_now["dt"], upjong, trade_key)
-    tr_row, _ = pick_latest_row(bz, row_now["dt"], upjong, "상권_지리", trade_key)
-    
-    # ✅ 행정동 데이터는 사용하지 않음 (빈 Series 반환)
-    dn_row = pd.Series()
-    
-    return dfm, row_now, peers, tr_row, dn_row
+    peers, _ = pick_peers(store, row_now["dt"], upjong, trade_key)
+    if "MCT_KEY" in peers.columns:
+        peers = peers[peers["MCT_KEY"] != row_now["MCT_KEY"]]
+    tr_row, _ = pick_latest_row(trade, row_now["dt"], upjong, "상권_지리", trade_key)
+    return dfm, row_now, peers, tr_row, None
 
-# ───────── 시각화 ─────────
-def build_kpi_figs(row_now, dfm, peers):
-    figs = []
-    items = [
-        ("총매출금액", get_num(row_now,"총매출금액","매출금액_구간"), "원"),
-        ("객단가",     get_num(row_now,"객단가","객단가_구간") or 
-                       (get_num(row_now,"총매출금액","매출금액_구간") /
-                        max(get_num(row_now,"총매출건수","매출건수_구간") or 1, 1)), "원"),
-        ("재방문 고객 비중", row_now.get("재방문_고객_비중", np.nan), "%"),
-        ("취소율", row_now.get("취소율", np.nan) if "취소율" in row_now.index else np.nan, "%"),
-        ("배달매출비율", row_now.get("배달매출금액_비율", np.nan), "%"),
-    ]
-    # 전월 비교
-    prev_dt = row_now["dt"] - pd.offsets.MonthBegin(1) if pd.notna(row_now["dt"]) else row_now["dt"]
-    prev = dfm[dfm["dt"]==prev_dt]
-    prev_row = prev.iloc[0] if not prev.empty else row_now
-    for title, cur, unit in items:
-        if pd.isna(cur): 
-            continue
-        ref = cur
-        if title=="총매출금액":
-            ref = get_num(prev_row,"총매출금액","매출금액_구간") or cur
-        elif title=="객단가":
-            ref = get_num(prev_row,"객단가","객단가_구간") or cur
-        elif title=="재방문 고객 비중":
-            ref = prev_row.get("재방문_고객_비중", cur)
-        elif title=="취소율":
-            ref = (prev_row.get("취소율", np.nan) if "취소율" in prev_row.index else np.nan) or cur
-        elif title=="배달매출비율":
-            ref = prev_row.get("배달매출금액_비율", cur)
-
-        fig = go.Figure(go.Indicator(
-            mode="number+delta", value=float(cur),
-            number={"valueformat": ",.0f", "suffix": f" {unit}"},
-            delta={"reference": float(ref), "relative": False, "valueformat": ",.0f"},
-            title={"text": title}
-        ))
-        fig.update_layout(height=100, margin=dict(l=10,r=10,t=30,b=10))
-        figs.append(fig)
-    return figs
-
-def build_pyramid(row_now, dn_row):
-    """
-    인구 피라미드 (dn_row는 사용 안 함)
-    """
-    age_order = ["≤20","30","40","50","60+"]
-    male_vals = [row_now.get("남성_20대이하_고객_비중",0), row_now.get("남성_30대_고객_비중",0),
-                 row_now.get("남성_40대_고객_비중",0),   row_now.get("남성_50대_고객_비중",0),
-                 row_now.get("남성_60대이상_고객_비중",0)]
-    fem_vals  = [row_now.get("여성_20대이하_고객_비중",0), row_now.get("여성_30대_고객_비중",0),
-                 row_now.get("여성_40대_고객_비중",0),   row_now.get("여성_50대_고객_비중",0),
-                 row_now.get("여성_60대이상_고객_비중",0)]
-    fig = go.Figure()
-    fig.add_bar(x=-np.array(male_vals, dtype=float), y=age_order, name="남성", orientation="h")
-    fig.add_bar(x= np.array(fem_vals,  dtype=float), y=age_order, name="여성", orientation="h")
-    fig.update_layout(barmode="relative", height=520, margin=dict(l=20,r=20,t=20,b=20),
-                      xaxis=dict(title_text="비중(%)", tickformat=".0f"),
-                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-    return fig
-
-def build_radar_and_minibars(row_now, peers):
-    def pct_rank(series, val):
-        s = pd.to_numeric(pd.Series(series), errors="coerce").dropna()
-        if s.empty or pd.isna(val): return np.nan
-        return (s < float(val)).mean() * 100
-    def peer_series(col, fallback=None):
-        if peers is None or peers.empty: return None
-        if col in peers.columns and not peers[col].isna().all():
-            return pd.to_numeric(peers[col], errors="coerce")
-        if fallback and fallback in peers.columns:
-            return peers[fallback].map(parse_bin_mid)
-        return None
-
-    axes = [
-        ("거래건수(상위 %)", "총매출건수", "매출건수_구간"),
-        ("객단가(상위 %)",   "객단가",     "객단가_구간"),
-        ("재방문(%)",        "재방문_고객_비중", None),
-        ("취소율(%)",        "취소율",     "취소율_구간"),
-        ("배달비율(%)",      "배달매출금액_비율", None),
-        ("매출금액(상위 %)", "총매출금액", "매출금액_구간"),
-    ]
-    mini_rows = []
-    for title, col, bin_col in axes:
-        v = get_num(row_now, col, bin_col)
-        p = pct_rank(peer_series(col, bin_col), v)
-        if "상위" in title:
-            mini_rows.append({"지표": title, "값": (100 - p) if pd.notna(p) else 0})
-    mini_df = pd.DataFrame(mini_rows)
-    mini = px.bar(mini_df, x="값", y="지표", orientation="h", text="값", range_x=[0,100])
-    mini.update_traces(texttemplate='%{text:.1f}%', textposition="outside")
-    mini.update_layout(height=210, margin=dict(l=20,r=20,t=10,b=10), xaxis_title="", yaxis_title="")
-
-    # 간단 레이더(동일 척도 0~100)
-    radar_labels = [r["지표"] for r in mini_rows]
-    radar_vals   = [r["값"]  for r in mini_rows]
-    radar = go.Figure()
-    if radar_labels:
-        radar.add_trace(go.Scatterpolar(r=radar_vals, theta=radar_labels, fill="toself", name="매장"))
-        radar.update_layout(height=360, polar=dict(radialaxis=dict(visible=True, range=[0,100])),
-                            margin=dict(l=40,r=40,t=40,b=40))
-    return radar, mini
-
-def build_trend_24m(dfm):
-    d = dfm.sort_values("dt").tail(24).copy()
-    if "객단가" not in d.columns or d["객단가"].isna().all():
-        if "객단가_구간" in d.columns:
-            d["객단가"] = d["객단가_구간"].map(parse_bin_mid)
-    if "총매출금액" not in d.columns or d["총매출금액"].isna().all():
-        if "매출금액_구간" in d.columns:
-            d["총매출금액"] = d["매출금액_구간"].map(parse_bin_mid)
-
-    fig = go.Figure()
-    if "총매출금액" in d.columns and not d["총매출금액"].isna().all():
-        fig.add_trace(go.Scatter(x=d["dt"], y=d["총매출금액"], mode="lines+markers", name="총매출금액(구간)"))
-    if "객단가" in d.columns and not d["객단가"].isna().all():
-        fig.add_trace(go.Scatter(x=d["dt"], y=d["객단가"], mode="lines", name="객단가", yaxis="y2", line=dict(dash="dot")))
-    if "재방문_고객_비중" in d.columns and not d["재방문_고객_비중"].isna().all():
-        fig.add_trace(go.Scatter(x=d["dt"], y=d["재방문_고객_비중"], mode="lines", name="재방문(%)", yaxis="y3", line=dict(dash="dash")))
+# ========= 스타일 유틸 =========
+def _apply_card_style(fig, height=196):
     fig.update_layout(
-        height=380, margin=dict(l=20,r=20,t=20,b=20),
-        yaxis=dict(title="매출(원, 또는 구간중간값)"),
-        yaxis2=dict(title="객단가(원)", overlaying="y", side="right", showgrid=False),
-        yaxis3=dict(title="재방문(%)", overlaying="y", side="right", position=0.92, showgrid=False),
-        legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom")
+        height=height,
+        margin=dict(l=20, r=20, t=88, b=20),
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
     )
     return fig
 
-def build_gap_bar(row_now, peers):
-    def peer_mean(col, bin_col=None):
-        if peers is None or peers.empty: return np.nan
-        s = peers[col] if (col in peers.columns) else None
-        if s is None or pd.Series(s).isna().all():
-            if bin_col and (bin_col in peers.columns):
-                s = peers[bin_col].map(parse_bin_mid)
-        if s is None: return np.nan
-        s = pd.to_numeric(s, errors="coerce").dropna()
-        return s.mean() if not s.empty else np.nan
+# ========= KPI 카드 =========
+def build_kpi_figs(row_now, dfm, peers):
+    def peer_series(col):
+        if peers.empty or col not in peers.columns:
+            return None
+        return pd.to_numeric(peers[col], errors="coerce")
 
-    items = [
-        ("객단가", get_num(row_now,"객단가","객단가_구간"), peer_mean("객단가","객단가_구간")),
-        ("재방문(%)", row_now.get("재방문_고객_비중", np.nan), peer_mean("재방문_고객_비중")),
-        ("취소율(%)", row_now.get("취소율", np.nan), peer_mean("취소율","취소율_구간")),
-        ("배달비율(%)", row_now.get("배달매출금액_비율", np.nan), peer_mean("배달매출금액_비율")),
-    ]
-    df = pd.DataFrame([{"지표":k, "격차":(s-a) if (pd.notna(s) and pd.notna(a)) else np.nan}
-                       for k,s,a in items]).dropna()
-    if df.empty:
-        return go.Figure()
-    fig = px.bar(df, x="격차", y="지표", orientation="h", color="격차",
-                 color_continuous_scale=["#d73027","#fdae61","#eeeeee","#a6d96a","#1a9850"],
-                 color_continuous_midpoint=0)
-    fig.update_traces(texttemplate='%{x:+.1f}', textposition="outside")
-    fig.update_layout(height=220, coloraxis_showscale=False, margin=dict(l=20,r=20,t=10,b=10),
-                      xaxis_title="매장 - 피어 평균", yaxis_title="")
+    def indicator_card(title, desc, cur, prev, peer_s, unit="%", higher_is_good=True):
+        curp = as_pct(cur)
+        prevp = as_pct(prev) if pd.notna(prev) else np.nan
+        ps = as_pct_series(pd.to_numeric(peer_s, errors="coerce")) if peer_s is not None else None
+        pctl = pct_rank(ps, curp) if ps is not None else np.nan
+        upper = f"동일업종·동일상권 대비 상위 {100 - pctl:.0f}% 위치" if pd.notna(pctl) else ""
+
+        show_delta = pd.notna(prevp) and pd.notna(curp)
+        # 색상
+        if show_delta:
+            delta_value = curp - prevp
+            if delta_value > 0: value_color = "#10b981"
+            elif delta_value < 0: value_color = "#dc2626"
+            else: value_color = THEME_INK
+        else:
+            value_color = THEME_INK
+
+        fig = go.Figure(go.Indicator(
+            mode="number" + ("+delta" if show_delta else ""),
+            value=float(curp) if pd.notna(curp) else 0.0,
+            number={"valueformat": ",.1f", "suffix": f" {unit}",
+                    "font": {"size": 42, "color": value_color}},
+            delta=({"reference": float(prevp),
+                    "relative": False, "valueformat": ",.1f", "suffix": f" {unit}",
+                    "increasing": {"color": "#10b981"},
+                    "decreasing": {"color": "#dc2626"}}
+                   if show_delta else None),
+            title={"text":
+                   f"<b style='font-size:17px;color:{THEME_INK}'>{title}</b>"
+                   f"<br><span style='font-size:12px;color:{THEME_MUTED};line-height:1.45'>{desc}</span>"
+                   + (f"<br><span style='font-size:12px;color:{THEME_MUTED}'>{upper}</span>" if upper else "")
+            }
+        ))
+        return _apply_card_style(fig, height=196)
+
+    prev_dt = row_now["dt"] - pd.offsets.MonthBegin(1) if pd.notna(row_now["dt"]) else row_now["dt"]
+    prev_row = dfm[dfm["dt"] == prev_dt].iloc[0] if not dfm[dfm["dt"] == prev_dt].empty else row_now
+
+    cur_repeat   = row_now.get("단골손님_비중", np.nan)
+    cur_delivery = row_now.get("배달매출_비중", np.nan)
+    cur_ind_rev  = row_now.get("동일_업종_매출금액_비율", np.nan)
+    cur_ind_cnt  = row_now.get("동일_업종_매출건수_비율", np.nan)
+
+    kpis = []
+    if pd.notna(cur_repeat):
+        kpis.append(indicator_card("재방문율", "다시 찾아오는 고객 비중(단골 비중)",
+                                   cur_repeat, prev_row.get("단골손님_비중", np.nan),
+                                   peer_series("단골손님_비중"), "%"))
+    if pd.notna(cur_delivery):
+        kpis.append(indicator_card("배달 매출 비중", "총매출 중 배달이 차지하는 비중",
+                                   cur_delivery, prev_row.get("배달매출_비중", np.nan),
+                                   peer_series("배달매출_비중"), "%"))
+
+    for t, v, ps_col in [
+        ("업종대비 매출액 지수", cur_ind_rev, "동일_업종_매출금액_비율"),
+        ("업종대비 건수 지수",   cur_ind_cnt, "동일_업종_매출건수_비율"),
+    ]:
+        if pd.notna(v):
+            ps = peer_series(ps_col)
+            pctl = pct_rank(pd.to_numeric(ps, errors="coerce") if ps is not None else None, float(v))
+            upper = f"동일업종·동일상권 대비 상위 {100 - pctl:.0f}% 위치" if pd.notna(pctl) else ""
+            fig = go.Figure(go.Indicator(
+                mode="number",
+                value=float(v),
+                number={"valueformat": ",.1f", "font": {"size": 42, "color": THEME_INK}},
+                title={"text":
+                       f"<b style='font-size:17px;color:{THEME_INK}'>{t}</b>"
+                       f"<br><span style='font-size:12px;color:{THEME_MUTED};line-height:1.45'>동일 업종 같은 달 평균 100 기준</span>"
+                       f"<br><span style='font-size:12px;color:{THEME_MUTED}'>{upper}</span>"
+                }
+            ))
+            kpis.append(_apply_card_style(fig, height=196))
+
+    while len(kpis) < 4:
+        dummy = go.Figure().add_annotation(text="데이터 없음", showarrow=False,
+                                           font=dict(size=14, color=THEME_MUTED))
+        kpis.append(_apply_card_style(dummy, height=196))
+    return kpis[:4]
+
+def build_top3_fig(row_now):
+    top_names = [str(row_now.get("핵심고객_1순위","")), str(row_now.get("핵심고객_2순위","")), str(row_now.get("핵심고객_3순위",""))]
+    top_vals  = [as_pct(row_now.get("핵심고객_1순위_비중",np.nan)),
+                 as_pct(row_now.get("핵심고객_2순위_비중",np.nan)),
+                 as_pct(row_now.get("핵심고객_3순위_비중",np.nan))]
+    top_df = pd.DataFrame({"그룹": top_names, "비중(%)": top_vals}).dropna()
+    if not top_df.empty:
+        top_df = top_df.sort_values("비중(%)", ascending=True)
+        vmax = float(top_df["비중(%)"].max() or 0.0)
+        xr = [0, max(30.0, round(vmax * 1.15, 1))]
+        fig = px.bar(top_df, x="비중(%)", y="그룹", orientation="h",
+                     text="비중(%)", range_x=xr,
+                     color_discrete_sequence=[THEME_MAIN])  # 보라
+        fig.update_traces(texttemplate='%{text:.1f}%', textposition="outside", cliponaxis=False)
+        fig.update_layout(
+            margin=dict(l=16, r=54, t=10, b=12),
+            xaxis_title="", yaxis_title="", height=228,
+            paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
+        )
+    else:
+        fig = go.Figure().add_annotation(text="핵심고객 정보가 없습니다.", showarrow=False)
+        fig.update_layout(margin=dict(l=16, r=16, t=10, b=10),
+                          xaxis={"visible": False}, yaxis={"visible": False}, height=220)
     return fig
+
+
+def build_pyramid(row_now, dn_row):
+    age_labels = ["20대 이하","30대","40대","50대","60대 이상"]
+    male_vals = [as_pct(row_now.get("남성_20대이하_고객_비중",0) or 0),
+                 as_pct(row_now.get("남성_30대_고객_비중",0) or 0),
+                 as_pct(row_now.get("남성_40대_고객_비중",0) or 0),
+                 as_pct(row_now.get("남성_50대_고객_비중",0) or 0),
+                 as_pct(row_now.get("남성_60대이상_고객_비중",0) or 0)]
+    fem_vals  = [as_pct(row_now.get("여성_20대이하_고객_비중",0) or 0),
+                 as_pct(row_now.get("여성_30대_고객_비중",0) or 0),
+                 as_pct(row_now.get("여성_40대_고객_비중",0) or 0),
+                 as_pct(row_now.get("여성_50대_고객_비중",0) or 0),
+                 as_pct(row_now.get("여성_60대이상_고객_비중",0) or 0)]
+    pyr_df = pd.DataFrame({"연령대": age_labels*2, "비중(%)": male_vals+fem_vals, "성별": ["남성"]*5 + ["여성"]*5})
+    fig = px.bar(pyr_df, x="연령대", y="비중(%)", color="성별", barmode="group",
+                 color_discrete_map={"남성": THEME_DARK, "여성": THEME_LIGHT})
+    fig.update_layout(
+        height=440,
+        margin=dict(l=22, r=18, t=18, b=36),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
+    )
+    return fig
+
+
+def build_radar_and_minibars(row_now, peers):
+    # 라벨 줄바꿈으로 클리핑 방지
+    axes_cols = [("단골<br>비중(%)","단골손님_비중"),
+                 ("신규<br>비중(%)","신규손님_비중"),
+                 ("배달<br>비중(%)","배달매출_비중"),
+                 ("거주고객<br>비중(%)","거주고객_비중"),
+                 ("직장고객<br>비중(%)","직장고객_비중")]
+    labels, r_store_vals, r_peer_vals = [], [], []
+    hover_store, hover_peer = [], []
+
+    def get_peer_series_percent(col_name):
+        if (not peers.empty) and (col_name in peers.columns):
+            return as_pct_series(pd.to_numeric(peers[col_name], errors="coerce"))
+        return None
+
+    for label, col in axes_cols:
+        store_raw = as_pct(row_now.get(col, np.nan))
+        peer_s = get_peer_series_percent(col)
+        if pd.isna(store_raw) or (peer_s is None) or peer_s.dropna().empty:
+            continue
+        peer_mean = float(peer_s.dropna().mean())
+        labels.append(label); r_store_vals.append(float(store_raw)); r_peer_vals.append(peer_mean)
+        # hover 텍스트는 줄바꿈 없는 풀 라벨로
+        plain = label.replace("<br>", " ")
+        hover_store.append(f"{plain}<br>매장: {store_raw:.1f}%")
+        hover_peer.append(f"{plain}<br>동일업종·동일상권 평균: {peer_mean:.1f}%")
+
+    radar_fig = go.Figure()
+    if labels:
+        radar_fig.add_trace(go.Scatterpolar(
+            r=r_store_vals, theta=labels, name='매장',
+            line=dict(color=THEME_DARK, width=2),
+            fill='toself', fillcolor="rgba(119,66,227,0.18)",
+            hovertext=hover_store, hoverinfo='text'
+        ))
+        radar_fig.add_trace(go.Scatterpolar(
+            r=r_peer_vals, theta=labels, name='동일업종·동일상권 평균',
+            line=dict(color=THEME_LIGHT, width=2),
+            fill='toself', fillcolor="rgba(217,204,255,0.25)",
+            hovertext=hover_peer, hoverinfo='text'
+        ))
+        radar_fig.update_layout(
+            polar=dict(
+                radialaxis=dict(visible=True, range=[0,100], tickvals=[0,25,50,75,100],
+                                tickfont=dict(size=11)),
+                angularaxis=dict(tickfont=dict(size=12),  # 라벨 글씨 조금 키움
+                                 rotation=90,             # 위쪽에서 시작 → 좌우 클리핑 감소
+                                 direction="clockwise")
+            ),
+            showlegend=True,
+            margin=dict(l=56, r=56, t=26, b=62),  # 여백 넉넉히
+            height=350,
+            paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
+        )
+    return radar_fig, None
+
+
+def build_trend_24m(dfm):
+    """24개월 트렌드 차트"""
+    df24 = dfm.sort_values("dt").tail(24).copy()
+    
+    def nz(col):
+        return (col in df24.columns) and (not df24[col].isna().all())
+    
+    def series_pct(col):
+        s = pd.to_numeric(df24[col], errors="coerce")
+        return s.apply(as_pct)
+    
+    fig = go.Figure()
+    
+    if nz("단골손님_비중"):
+        fig.add_trace(go.Scatter(
+            x=df24["dt"], y=series_pct("단골손님_비중"),
+            mode="lines+markers", name="재방문율(단골손님_비중, %)", yaxis="y"
+        ))
+    
+    if nz("배달매출_비중"):
+        fig.add_trace(go.Scatter(
+            x=df24["dt"], y=series_pct("배달매출_비중"),
+            mode="lines+markers", name="배달 비중(배달매출_비중, %)", yaxis="y"
+        ))
+    
+    if nz("동일_업종_매출금액_비율"):
+        fig.add_trace(go.Scatter(
+            x=df24["dt"], y=pd.to_numeric(df24["동일_업종_매출금액_비율"], errors="coerce"),
+            mode="lines", name="업종대비 매출액 지수(=100 평균)", line=dict(dash="dot"), yaxis="y2"
+        ))
+    
+    if nz("동일_업종_매출건수_비율"):
+        fig.add_trace(go.Scatter(
+            x=df24["dt"], y=pd.to_numeric(df24["동일_업종_매출건수_비율"], errors="coerce"),
+            mode="lines", name="업종대비 건수 지수(=100 평균)", line=dict(dash="dot"), yaxis="y2"
+        ))
+    
+    fig.update_layout(
+        height=380,
+        margin=dict(l=20, r=20, t=20, b=20),
+        yaxis=dict(title="정규화 비율(%)", rangemode="tozero"),
+        yaxis2=dict(title="지수(업종 평균=100)", overlaying="y", side="right", rangemode="tozero"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    
+    return fig
+
+
+# === gap bar 비활성화 =======================================
+def build_gap_bar(row_now, peers):
+    fig = go.Figure()
+    fig.update_layout(height=10, margin=dict(l=0, r=0, t=0, b=0),
+                      xaxis={"visible": False}, yaxis={"visible": False})
+    return fig
+
 
 def build_age_dev(row_now, dn_row):
-    """
-    ✅ dn_row가 비어있어도 정상 작동하도록 수정
-    """
-    age_labels = ["≤20","30","40","50","60+"]
-    store_age_map = {
-        "≤20": (row_now.get("남성_20대이하_고객_비중",0) + row_now.get("여성_20대이하_고객_비중",0)),
-        "30":  (row_now.get("남성_30대_고객_비중",0)    + row_now.get("여성_30대_고객_비중",0)),
-        "40":  (row_now.get("남성_40대_고객_비중",0)    + row_now.get("여성_40대_고객_비중",0)),
-        "50":  (row_now.get("남성_50대_고객_비중",0)    + row_now.get("여성_50대_고객_비중",0)),
-        "60+": (row_now.get("남성_60대이상_고객_비중",0) + row_now.get("여성_60대이상_고객_비중",0)),
-    }
-    
-    # ✅ 행정동 데이터가 없으면 빈 그래프 반환
-    if dn_row is None or (isinstance(dn_row, pd.Series) and dn_row.empty):
-        fig = go.Figure()
-        fig.add_annotation(
-            text="행정동 데이터 없음",
-            xref="paper", yref="paper",
-            x=0.5, y=0.5, showarrow=False,
-            font=dict(size=14, color="gray")
-        )
-        fig.update_layout(height=260, margin=dict(l=20,r=20,t=10,b=10))
-        return fig
-    
-    if not isinstance(dn_row, pd.Series):
-        dn_row = pd.Series(dn_row)
-    
-    age_counts = {
-        "≤20": (dn_row.get("연령대_10_상주인구_수",0) or 0) + (dn_row.get("연령대_20_상주인구_수",0) or 0),
-        "30":  dn_row.get("연령대_30_상주인구_수",0) or 0,
-        "40":  dn_row.get("연령대_40_상주인구_수",0) or 0,
-        "50":  dn_row.get("연령대_50_상주인구_수",0) or 0,
-        "60+": dn_row.get("연령대_60_이상_상주인구_수",0) or 0,
-    }
-    tot = float(np.nansum(list(age_counts.values())))
-    x_region = [((age_counts[a]/tot)*100.0 if tot>0 else 0) for a in age_labels]
-    y_store  = [store_age_map.get(a,0) for a in age_labels]
-
-    vmax = max(max(x_region or [0]), max(y_store or [0]), 1) * 1.1
+    """연령대 편차 차트 (매장 방문 연령 vs 상권 연령 - 행정동 제거됨)"""
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=x_region, y=y_store, mode="markers+text", text=age_labels, textposition="top center"))
-    fig.add_trace(go.Scatter(x=[0, vmax], y=[0, vmax], mode="lines", line=dict(color="gray", dash="dot")))
-    fig.update_layout(height=260, margin=dict(l=20,r=20,t=10,b=10),
-                      xaxis_title="행정동 연령대 비중(%)", yaxis_title="매장 방문 비중(%)",
-                      showlegend=False, xaxis_range=[0, vmax], yaxis_range=[0, vmax])
+    fig.add_annotation(
+        text="연령대 편차 분석은 현재 비활성화되었습니다.",
+        showarrow=False,
+        font=dict(size=14, color="#666")
+    )
+    fig.update_layout(
+        height=220,
+        margin=dict(l=20, r=20, t=10, b=10),
+        xaxis={"visible": False},
+        yaxis={"visible": False}
+    )
     return fig
 
-def build_heatmap(tr_row, kind="flow"):
-    # 간이 버전 (trade row 사용)
-    if tr_row is None or (isinstance(tr_row, pd.Series) and tr_row.empty):
-        return go.Figure()
-    if kind == "flow":
-        time_cols = ["시간대_00_06_유동인구_수","시간대_06_11_유동인구_수","시간대_11_14_유동인구_수",
-                     "시간대_14_17_유동인구_수","시간대_17_21_유동인구_수","시간대_21_24_유동인구_수"]
-        dow_cols  = ["월요일_유동인구_수","화요일_유동인구_수","수요일_유동인구_수","목요일_유동인구_수",
-                     "금요일_유동인구_수","토요일_유동인구_수","일요일_유동인구_수"]
-    else:
-        time_cols = ["시간대_00~06_매출_금액","시간대_06~11_매출_금액","시간대_11~14_매출_금액",
-                     "시간대_14~17_매출_금액","시간대_17~21_매출_금액","시간대_21~24_매출_금액"]
-        dow_cols  = ["월요일_매출_금액","화요일_매출_금액","수요일_매출_금액","목요일_매출_금액",
-                     "금요일_매출_금액","토요일_매출_금액","일요일_매출_금액"]
-    time_labels = ["00-06시","06-11시","11-14시","14-17시","17-21시","21-24시"]
-    dow_labels  = ["월","화","수","목","금","토","일"]
 
-    tr_vals_time = [float(tr_row.get(c, 0) or 0) for c in time_cols]
-    tr_vals_dow  = [float(tr_row.get(c, 0) or 0) for c in dow_cols]
-    mat = np.outer(np.array(tr_vals_dow, dtype=float), np.array(tr_vals_time, dtype=float))
-    m, s = float(np.nanmean(mat)), float(np.nanstd(mat))
-    z = (mat - m)/s if s not in (0.0, np.nan) else mat*0
-    fig = go.Figure(go.Heatmap(z=z, x=time_labels, y=dow_labels, colorscale="RdBu_r", zmid=0, colorbar=dict(title="Z")))
-    fig.update_layout(height=350, margin=dict(l=20,r=20,t=10,b=10))
+def build_heatmap(tr_row, kind="flow"):
+    """요일×시간 히트맵 (상권 기준, Z-정규화) — kind: 'flow' or 'sales'"""
+    def _first_available(cols):
+        for c in cols:
+            if c in tr_row.index:
+                return c
+        return None
+
+    def _collect(prefix_patterns):
+        vals = []
+        for patterns in prefix_patterns:
+            c = _first_available(patterns)
+            vals.append(float(tr_row.get(c, 0) if c else 0.0))
+        return vals
+
+    time_candidates_flow = [
+        ("시간대_00_06_유동인구_수", "시간대_00~06_유동인구_수"),
+        ("시간대_06_11_유동인구_수", "시간대_06~11_유동인구_수"),
+        ("시간대_11_14_유동인구_수", "시간대_11~14_유동인구_수"),
+        ("시간대_14_17_유동인구_수", "시간대_14~17_유동인구_수"),
+        ("시간대_17_21_유동인구_수", "시간대_17~21_유동인구_수"),
+        ("시간대_21_24_유동인구_수", "시간대_21~24_유동인구_수"),
+    ]
+    time_candidates_sales = [
+        ("시간대_00_06_매출_금액", "시간대_00~06_매출_금액"),
+        ("시간대_06_11_매출_금액", "시간대_06~11_매출_금액"),
+        ("시간대_11_14_매출_금액", "시간대_11~14_매출_금액"),
+        ("시간대_14_17_매출_금액", "시간대_14~17_매출_금액"),
+        ("시간대_17_21_매출_금액", "시간대_17~21_매출_금액"),
+        ("시간대_21_24_매출_금액", "시간대_21~24_매출_금액"),
+    ]
+    dow_candidates_flow = [
+        ("월요일_유동인구_수",), ("화요일_유동인구_수",), ("수요일_유동인구_수",),
+        ("목요일_유동인구_수",), ("금요일_유동인구_수",), ("토요일_유동인구_수",), ("일요일_유동인구_수",)
+    ]
+    dow_candidates_sales = [
+        ("월요일_매출_금액",), ("화요일_매출_금액",), ("수요일_매출_금액",),
+        ("목요일_매출_금액",), ("금요일_매출_금액",), ("토요일_매출_금액",), ("일요일_매출_금액",)
+    ]
+
+    if kind == "sales":
+        tvals = _collect(time_candidates_sales)
+        dvals = _collect(dow_candidates_sales)
+        if sum(tvals) == 0 and sum(dvals) == 0:
+            tvals = _collect(time_candidates_flow); dvals = _collect(dow_candidates_flow)
+    else:
+        tvals = _collect(time_candidates_flow)
+        dvals = _collect(dow_candidates_flow)
+        if sum(tvals) == 0 and sum(dvals) == 0:
+            tvals = _collect(time_candidates_sales); dvals = _collect(dow_candidates_sales)
+
+    time_labels = ["00-06시", "06-11시", "11-14시", "14-17시", "17-21시", "21-24시"]
+    dow_labels  = ["월", "화", "수", "목", "금", "토", "일"]
+
+    mat = np.outer(np.array(dvals, dtype=float), np.array(tvals, dtype=float))
+
+    fig = go.Figure(go.Heatmap(
+        z=zscore(mat), x=time_labels, y=dow_labels,
+        colorscale="RdBu_r", zmid=0, colorbar=dict(title="Z")
+    ))
+    fig.update_layout(
+        height=368,
+        margin=dict(l=22, r=22, t=14, b=22),
+        xaxis_title="시간대", yaxis_title="요일",
+        paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
+    )
     return fig
