@@ -10,8 +10,15 @@ from typing import Dict, Any
 from my_agent.utils.tools import load_store_and_area_data
 
 
-def _safe(x, default=None):
-    return x if x not in [None, "", "NaN"] else default
+def _safe(x, default=0.0):
+    # 빈 문자열 또는 None 처리
+    if x in [None, ""]:
+        return default
+    # 숫자 타입일 경우 float 변환
+    if isinstance(x, (int, float)):
+        return float(x)
+    # 문자열이나 기타 타입은 그대로 반환
+    return x
 
 
 def _format_percent(val):
