@@ -1,4 +1,4 @@
-# [1021] Guide node guide (이지민)
+# [1021] General node guide (이지민)
 
 ## General Node 프로세스
 
