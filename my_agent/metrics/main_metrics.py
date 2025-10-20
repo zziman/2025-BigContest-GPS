@@ -53,13 +53,13 @@ def build_main_metrics(store_num: str) -> Dict[str, Any]:
     main_metrics = {
         "핵심고객_1순위": _safe(store.get("핵심고객_1순위")),
         "핵심고객_2순위": _safe(store.get("핵심고객_2순위")),
-        "핵심고객_3순위": _safe(store.get("핵심고객_3순위")),
         "거주고객_비중": _safe(store.get("거주고객_비중")),
         "직장고객_비중": _safe(store.get("직장고객_비중")),
         "유동인구고객_비중": _safe(store.get("유동인구고객_비중")),
         "배달매출_비중": _safe(store.get("배달매출_비중")),
         "신규손님_비중": _safe(store.get("신규손님_비중")),
-        "단골손님_비중": _safe(store.get("단골손님_비중"))}
+        "단골손님_비중": _safe(store.get("단골손님_비중")),
+        "매출금액_구간(6개구간)": _safe(store.get("매출금액_구간"))}
 
     main_metrics = _drop_na_metrics(main_metrics)
 
@@ -70,7 +70,9 @@ def build_main_metrics(store_num: str) -> Dict[str, Any]:
         "유동인구_YoY": _safe(bizarea.get("유동인구_YoY")),
         "접근성_점수": _safe(bizarea.get("접근성_점수")),
         "피크_요일": _safe(bizarea.get("피크_요일")),
-        "피크_시간대": _safe(bizarea.get("피크_시간대"))}
+        "피크_시간대": _safe(bizarea.get("피크_시간대")),
+        "유사_업종_점포_수": _safe(bizarea.get("유사_업종_점포_수"))
+        }
     
     bizarea_metrics = _drop_na_metrics(bizarea_metrics)
 
