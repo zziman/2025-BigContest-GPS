@@ -134,7 +134,7 @@ def build_revisit_metrics(store_num: str) -> Dict[str, Any]:
         lambda v: f"업종 건수 편차 {v:+.1f} (높음)"
     )
 
-    # 결과 정리 (여기서 실제로 적용)
+    # 결과 정리
     revisit_metrics = _drop_na_metrics(revisit_metrics)
     abnormal_metrics = _drop_na_metrics(abnormal_metrics)
 
