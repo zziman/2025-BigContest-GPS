@@ -2,13 +2,13 @@
 
 # -*- coding: utf-8 -*-
 """
-Intent 라우팅: LLM 우선 분류 → 규칙 기반 보정(백업)
+Intent 라우팅: LLM 우선 분류 → 규칙 기반 보정(백업) → 가맹점 검색
 """
 from typing import Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 from my_agent.utils.config import GOOGLE_API_KEY, LLM_MODEL, LLM_TEMPERATURE
 from my_agent.utils.state import GraphState
-
+from my_agent.utils.tools import resolve_store  # ✅ 추가
 
 INTENTS = ("SNS", "REVISIT", "ISSUE", "GENERAL")
 
@@ -74,12 +74,39 @@ class RouterNode:
     def __call__(self, state: GraphState) -> GraphState:
         user_query = state.get("user_query", "")
 
-        # 1) LLM 우선
+        # ═════════════════════════════════════════
+        # 1) Intent 분류
+        # ═════════════════════════════════════════
+        # 1-1) LLM 우선
         intent = self._classify_with_llm(user_query)
 
-        # 2) LLM 실패/애매 → 규칙 기반 보정
+        # 1-2) LLM 실패/애매 → 규칙 기반 보정
         if intent is None:
             intent = self._rules_fallback(user_query)
 
         state["intent"] = intent
+        print(f"[ROUTER] Intent 분류 완료: {intent}")
+
+        # ═════════════════════════════════════════
+        # 2) 가맹점 검색 (store_id 없을 때만)
+        # ═════════════════════════════════════════
+        if not state.get("store_id"):
+            print("[ROUTER] resolve_store 실행 중...")
+            state = resolve_store(state)
+            
+            # need_clarify가 True면 바로 리턴 (후보 선택 필요)
+            if state.get("need_clarify"):
+                print("[ROUTER] ⚠️ 가맹점 후보 여러 개 → 사용자 선택 필요")
+                print(f"[ROUTER] 후보 수: {len(state.get('store_candidates', []))}")
+                return state
+            
+            # 가맹점 확정됨
+            if state.get("store_id"):
+                user_info = state.get("user_info", {})
+                print(f"[ROUTER] ✅ 가맹점 확정: {user_info.get('store_name')} (id={state.get('store_id')})")
+            else:
+                print("[ROUTER] ℹ️ 가맹점명 없음 → GENERAL fallback 모드")
+        else:
+            print(f"[ROUTER] store_id 이미 존재: {state.get('store_id')}")
+
         return state
