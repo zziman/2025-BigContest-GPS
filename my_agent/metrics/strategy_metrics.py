@@ -47,7 +47,7 @@ def build_strategy_metrics(store_num: str) -> Dict[str, Any]:
 
     # 전략 강도 지표 수집
     strategy_metrics = {
-        "취소율_구간(6개구간)": _safe(store.get("취소율_구간")),
+        "취소율_구간": _safe(store.get("취소율_구간")),
         "상권과_이동성_적합도": _safe(store.get("이동성_적합도")),
         "상권과_연령대_적합도": _safe(store.get("연령대_적합도"))}
 
