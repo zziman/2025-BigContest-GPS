@@ -11,7 +11,6 @@ from my_agent.utils.tools import load_store_and_area_data
 
 
 def _safe(x, default=0.0):
-<<<<<<< Updated upstream
     # 빈 문자열 또는 None 처리
     if x in [None, ""]:
         return default
@@ -19,13 +18,6 @@ def _safe(x, default=0.0):
     if isinstance(x, (int, float)):
         return float(x)
     # 문자열이나 기타 타입은 그대로 반환
-=======
-    """빈 문자열 또는 None 처리"""
-    if x in [None, ""]:
-        return default
-    if isinstance(x, (int, float)):
-        return float(x)
->>>>>>> Stashed changes
     return x
 
 
