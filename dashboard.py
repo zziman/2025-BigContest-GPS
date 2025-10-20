@@ -85,43 +85,73 @@ def pick_peers(df, dt_target, upjong, trade_key):
     return base.sort_values("dt").tail(9999), "peer_latest_any"
 
 # ───────── 필수 API ─────────
-def load_all_data(fr_path, bz_path, ad_path):
+# dashboard.py
+
+def load_all_data(fr_path=None, bz_path=None, ad_path=None):
+    """
+    ✅ config 기본값 사용 (경로를 명시하지 않으면 config에서 자동 로드)
+    반환값: (fr, bz) - 2개만 반환 (ad는 사용하지 않음)
+    """
+    # 경로가 주어지지 않으면 config에서 가져옴
+    fr_path = fr_path or CFG.FRANCHISE_CSV
+    bz_path = bz_path or CFG.BIZ_AREA_CSV
+    
     fr = ensure_dt(pd.read_csv(fr_path, low_memory=False))
     bz = ensure_dt(pd.read_csv(bz_path, low_memory=False))
-    ad = ensure_dt(pd.read_csv(ad_path, low_memory=False))
+    
     if "가맹점_구분번호" not in fr.columns:
         raise KeyError("franchise_data.csv 에 '가맹점_구분번호'가 없습니다.")
     fr["MCT_KEY"] = fr["가맹점_구분번호"].astype(str).str.strip()
-    # 텍스트 정리
-    for df in (fr, bz, ad):
+    
+    # ✅ 텍스트 정리 (fr, bz만)
+    for df in (fr, bz):
         for c in ("업종","상권_지리","행정동","행정동_코드_명"):
             if c in df.columns:
                 df[c] = df[c].astype(str).str.replace("\u200b","").str.strip()
-    # 행정동 정규화
+    
+    # ✅ 행정동 정규화 (fr만)
     fr["행정동_norm"] = fr.get("행정동", pd.Series(index=fr.index, dtype=object)).astype(str).str.split().str[-1]
-    if "행정동_코드_명" in ad.columns:
-        ad["행정동_norm"] = ad["행정동_코드_명"].astype(str).str.split().str[-1]
-    elif "행정동" in ad.columns:
-        ad["행정동_norm"] = ad["행정동"].astype(str).str.split().str[-1]
-    else:
-        ad["행정동_norm"] = np.nan
-    return fr, bz, ad
+    
+    return fr, bz  # ✅ 2개만 반환
 
 def compute_context(fr, bz, ad, store_id):
+    """
+    가맹점 컨텍스트 계산
+    
+    Args:
+        fr: franchise DataFrame
+        bz: biz_area DataFrame
+        ad: admin_dong DataFrame (사용 안 함, 호환성 유지)
+        store_id: 가맹점_구분번호
+    
+    Returns:
+        (dfm, row_now, peers, tr_row, dn_row)
+        - dfm: 해당 가맹점의 전체 시계열 데이터
+        - row_now: 최신 행
+        - peers: 동종·동상권 피어 데이터
+        - tr_row: 상권 데이터 (1행)
+        - dn_row: 행정동 데이터 (빈 Series, 사용 안 함)
+    """
     dfm = fr[fr["MCT_KEY"] == str(store_id)].copy()
     if dfm.empty:
         raise ValueError(f"선택한 가맹점({store_id}) 데이터가 없습니다.")
+    
     latest_dt = dfm["dt"].dropna().max()
-    cand = dfm[dfm["dt"]==latest_dt]
+    cand = dfm[dfm["dt"] == latest_dt]
     if cand.empty:
         cand = dfm.sort_values("dt").tail(1)
     row_now = cand.iloc[0]
-    upjong    = str(row_now.get("업종",""))
-    trade_key = str(row_now.get("상권_지리",""))
-    dong_key  = str(row_now.get("행정동_norm",""))
-    peers, _  = pick_peers(fr, row_now["dt"], upjong, trade_key)
+    
+    upjong = str(row_now.get("업종", ""))
+    trade_key = str(row_now.get("상권_지리", ""))
+    
+    # 피어 및 상권 데이터 조회
+    peers, _ = pick_peers(fr, row_now["dt"], upjong, trade_key)
     tr_row, _ = pick_latest_row(bz, row_now["dt"], upjong, "상권_지리", trade_key)
-    dn_row, _ = pick_latest_row(ad, row_now["dt"], upjong, "행정동_norm", dong_key)
+    
+    # ✅ 행정동 데이터는 사용하지 않음 (빈 Series 반환)
+    dn_row = pd.Series()
+    
     return dfm, row_now, peers, tr_row, dn_row
 
 # ───────── 시각화 ─────────
@@ -166,6 +196,9 @@ def build_kpi_figs(row_now, dfm, peers):
     return figs
 
 def build_pyramid(row_now, dn_row):
+    """
+    인구 피라미드 (dn_row는 사용 안 함)
+    """
     age_order = ["≤20","30","40","50","60+"]
     male_vals = [row_now.get("남성_20대이하_고객_비중",0), row_now.get("남성_30대_고객_비중",0),
                  row_now.get("남성_40대_고객_비중",0),   row_now.get("남성_50대_고객_비중",0),
@@ -278,6 +311,9 @@ def build_gap_bar(row_now, peers):
     return fig
 
 def build_age_dev(row_now, dn_row):
+    """
+    ✅ dn_row가 비어있어도 정상 작동하도록 수정
+    """
     age_labels = ["≤20","30","40","50","60+"]
     store_age_map = {
         "≤20": (row_now.get("남성_20대이하_고객_비중",0) + row_now.get("여성_20대이하_고객_비중",0)),
@@ -286,20 +322,31 @@ def build_age_dev(row_now, dn_row):
         "50":  (row_now.get("남성_50대_고객_비중",0)    + row_now.get("여성_50대_고객_비중",0)),
         "60+": (row_now.get("남성_60대이상_고객_비중",0) + row_now.get("여성_60대이상_고객_비중",0)),
     }
-    if dn_row is not None and not isinstance(dn_row, pd.Series):
+    
+    # ✅ 행정동 데이터가 없으면 빈 그래프 반환
+    if dn_row is None or (isinstance(dn_row, pd.Series) and dn_row.empty):
+        fig = go.Figure()
+        fig.add_annotation(
+            text="행정동 데이터 없음",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=14, color="gray")
+        )
+        fig.update_layout(height=260, margin=dict(l=20,r=20,t=10,b=10))
+        return fig
+    
+    if not isinstance(dn_row, pd.Series):
         dn_row = pd.Series(dn_row)
-    if dn_row is None or dn_row.empty:
-        x_region = [0,0,0,0,0]
-    else:
-        age_counts = {
-            "≤20": (dn_row.get("연령대_10_상주인구_수",0) or 0) + (dn_row.get("연령대_20_상주인구_수",0) or 0),
-            "30":  dn_row.get("연령대_30_상주인구_수",0) or 0,
-            "40":  dn_row.get("연령대_40_상주인구_수",0) or 0,
-            "50":  dn_row.get("연령대_50_상주인구_수",0) or 0,
-            "60+": dn_row.get("연령대_60_이상_상주인구_수",0) or 0,
-        }
-        tot = float(np.nansum(list(age_counts.values())))
-        x_region = [((age_counts[a]/tot)*100.0 if tot>0 else 0) for a in age_labels]
+    
+    age_counts = {
+        "≤20": (dn_row.get("연령대_10_상주인구_수",0) or 0) + (dn_row.get("연령대_20_상주인구_수",0) or 0),
+        "30":  dn_row.get("연령대_30_상주인구_수",0) or 0,
+        "40":  dn_row.get("연령대_40_상주인구_수",0) or 0,
+        "50":  dn_row.get("연령대_50_상주인구_수",0) or 0,
+        "60+": dn_row.get("연령대_60_이상_상주인구_수",0) or 0,
+    }
+    tot = float(np.nansum(list(age_counts.values())))
+    x_region = [((age_counts[a]/tot)*100.0 if tot>0 else 0) for a in age_labels]
     y_store  = [store_age_map.get(a,0) for a in age_labels]
 
     vmax = max(max(x_region or [0]), max(y_store or [0]), 1) * 1.1
