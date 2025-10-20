@@ -24,10 +24,19 @@ from typing import Dict, Any, Optional, List, Union
 import pandas as pd
 
 
-# 데이터 경로
-FRANCHISE_CSV = os.environ.get("FRANCHISE_CSV", "./data/franchise_data.csv")
-BIZ_AREA_CSV  = os.environ.get("BIZ_AREA_CSV",  "./data/biz_area.csv")
-ADMIN_DONG_CSV = os.environ.get("ADMIN_DONG_CSV", "./data/admin_dong.csv")
+# config에서 그대로 가져오기 (Streamlit secrets/env/기본값 우선순위 유지)
+from my_agent.utils.config import (
+    FRANCHISE_CSV as _FRANCHISE,
+    BIZ_AREA_CSV  as _BIZAREA,
+    ADMIN_DONG_CSV as _ADMIN,
+)
+
+
+# 경로만 절대경로화
+FRANCHISE_CSV  = Path(_FRANCHISE).expanduser().resolve()
+BIZ_AREA_CSV   = Path(_BIZAREA).expanduser().resolve()
+ADMIN_DONG_CSV = Path(_ADMIN).expanduser().resolve()
+
 
 # 전역 DataFrame 캐시
 _FRANCHISE_DF: Optional[pd.DataFrame] = None
@@ -103,25 +112,36 @@ def _to_serializable_records(df: pd.DataFrame) -> List[Dict[str, Any]]:
 
 
 # 가맹점명 검색
-def search_merchant(merchant_name: str, top_k: int = 20) -> Dict[str, Any]:
-    """
-    가맹점명으로 후보 검색 (부분일치)
-    반환 컬럼은 원본 일부 노출 (가맹점_구분번호, 가맹점명, 주소/상권/업종 등)
-    """
+def search_merchant(merchant_name: str) -> Dict[str, Any]:
+    """가맹점명으로 후보 검색"""
     df = _load_franchise_df()
     q = (merchant_name or "").strip()
-    if not q:
+    q_clean = q.replace("*", "")
+    
+    if not q_clean:
         return {
             "found": False,
             "message": "검색어가 비어있습니다.",
             "count": 0,
             "merchants": []
         }
-
+    
+    # 정확 일치
+    exact_match = df[df["가맹점명"] == q]
+    
     # 부분 일치
-    mask = df["가맹점명"].str.contains(q, case=False, na=False)
-    result = df[mask].copy()
-
+    if exact_match.empty:
+        mask = df["가맹점명"].str.replace("*", "", regex=False).str.contains(q_clean, case=False, na=False)
+        result = df[mask].copy()
+    else:
+        result = exact_match.copy()
+    
+    # 완화된 검색: 첫 2글자
+    if result.empty and len(q_clean) >= 2:
+        prefix = q_clean[:2]
+        mask = df["가맹점명"].str.startswith(prefix, na=False)
+        result = df[mask].copy()
+    
     if result.empty:
         return {
             "found": False,
@@ -129,23 +149,24 @@ def search_merchant(merchant_name: str, top_k: int = 20) -> Dict[str, Any]:
             "count": 0,
             "merchants": []
         }
-
-    # 간단 정렬: 이름 길이, 사전순
-    result["_len"] = result["가맹점명"].str.len()
-    result = result.sort_values(by=["_len", "가맹점명"], ascending=[True, True]).drop(columns=["_len"])
-
-    # 노출 컬럼 구성 (존재하는 컬럼만)
-    base_cols = [
-        "가맹점_구분번호", "가맹점명", "가맹점_지역", "업종",
-        "상권", "상권_지리", "가맹점_주소"
-    ]
-    cols = [c for c in base_cols if c in result.columns]
-    merchants = (
-        result[cols]
-        .drop_duplicates(subset=["가맹점_구분번호"] if "가맹점_구분번호" in result.columns else None)
-        .head(max(1, int(top_k)))
-    )
-    merchants = _to_serializable_records(merchants)
+    
+    # 정렬
+    result["_name_len"] = result["가맹점명"].str.len()
+    result["_star_count"] = result["가맹점명"].str.count("\*")
+    result = result.sort_values(
+        by=["_star_count", "_name_len", "가맹점명"],
+        ascending=[True, True, True]
+    ).drop(columns=["_name_len", "_star_count"])
+    
+    cols = ["가맹점_구분번호", "가맹점명", "가맹점_주소", "업종"]
+    merchants = result[cols].drop_duplicates(subset=["가맹점_구분번호"]).head(20).to_dict(orient="records")
+    
+    return {
+        "found": True,
+        "message": f"'{merchant_name}' 후보 {len(merchants)}개",
+        "count": len(merchants),
+        "merchants": merchants
+    }
 
     # user_info 키를 함께 달고 싶을 때를 대비하여 생성 가능 -> 참고하세요!
     # for m in merchants:
@@ -156,14 +177,6 @@ def search_merchant(merchant_name: str, top_k: int = 20) -> Dict[str, Any]:
     #         "marketing_area": m.get("상권") or m.get("상권_지리"),
     #         "industry": m.get("업종"),
     #     }
-
-    return {
-        "found": True,
-        "message": f"'{merchant_name}' 후보 {len(merchants)}개",
-        "count": len(merchants),
-        "merchants": merchants
-    }
-
 
 
 def load_store_data(store_id: str, latest_only: bool = True) -> Dict[str, Any]:
