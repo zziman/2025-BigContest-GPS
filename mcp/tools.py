@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Union
 
 import pandas as pd
+import re 
 
 
 # config에서 그대로 가져오기 (Streamlit secrets/env/기본값 우선순위 유지)
@@ -113,18 +114,71 @@ def _to_serializable_records(df: pd.DataFrame) -> List[Dict[str, Any]]:
 
 # 가맹점명 검색
 def search_merchant(merchant_name: str) -> Dict[str, Any]:
-    """가맹점명으로 후보 검색"""
+    """
+    가맹점명 또는 가맹점_구분번호로 검색
+    
+    Args:
+        merchant_name: 가맹점명 또는 가맹점_구분번호
+    
+    Returns:
+        {
+            "found": bool,
+            "message": str,
+            "count": int,
+            "merchants": List[dict],
+            "search_type": "id" | "name" | None  # 검색 유형
+        }
+    """
     df = _load_franchise_df()
     q = (merchant_name or "").strip()
-    q_clean = q.replace("*", "")
     
-    if not q_clean:
+    if not q:
         return {
             "found": False,
             "message": "검색어가 비어있습니다.",
             "count": 0,
-            "merchants": []
+            "merchants": [],
+            "search_type": None
         }
+    
+    # ─────────────────────────────────────────
+    # 1. 가맹점_구분번호 패턴 감지 (우선순위 높음)
+    # ─────────────────────────────────────────
+    store_id_pattern = r'^[A-Z0-9]{10,11}$'
+    
+    if re.match(store_id_pattern, q.upper()):
+        print(f"[MCP] 가맹점_구분번호로 인식: {q}")
+        result = df[df["가맹점_구분번호"] == q.upper()].copy()
+        
+        if not result.empty:
+            # 최신 데이터만 (중복 제거)
+            result = result.sort_values("기준년월", ascending=False)
+            result = result.drop_duplicates(subset=["가맹점_구분번호"], keep="first")
+            
+            cols = ["가맹점_구분번호", "가맹점명", "가맹점_주소", "업종"]
+            merchants = result[cols].to_dict(orient="records")
+            
+            return {
+                "found": True,
+                "message": f"가맹점_구분번호 '{q}' 조회 성공",
+                "count": 1,
+                "merchants": merchants,
+                "search_type": "id"
+            }
+        else:
+            return {
+                "found": False,
+                "message": f"가맹점_구분번호 '{q}'를 찾을 수 없습니다.",
+                "count": 0,
+                "merchants": [],
+                "search_type": "id"
+            }
+    
+    # ─────────────────────────────────────────
+    # 2. 가맹점명으로 검색 (기존 로직)
+    # ─────────────────────────────────────────
+    print(f"[MCP] 가맹점명으로 검색: '{q}'")
+    q_clean = q.replace("*", "")
     
     # 정확 일치
     exact_match = df[df["가맹점명"] == q]
@@ -147,10 +201,11 @@ def search_merchant(merchant_name: str) -> Dict[str, Any]:
             "found": False,
             "message": f"'{merchant_name}'에 해당하는 가맹점이 없습니다.",
             "count": 0,
-            "merchants": []
+            "merchants": [],
+            "search_type": "name"
         }
     
-    # 정렬
+    # 정렬 (기존 로직)
     result["_name_len"] = result["가맹점명"].str.len()
     result["_star_count"] = result["가맹점명"].str.count("\*")
     result = result.sort_values(
@@ -158,6 +213,7 @@ def search_merchant(merchant_name: str) -> Dict[str, Any]:
         ascending=[True, True, True]
     ).drop(columns=["_name_len", "_star_count"])
     
+    # 중복 제거 (같은 가맹점의 여러 시점 데이터)
     cols = ["가맹점_구분번호", "가맹점명", "가맹점_주소", "업종"]
     merchants = result[cols].drop_duplicates(subset=["가맹점_구분번호"]).head(20).to_dict(orient="records")
     
@@ -165,7 +221,8 @@ def search_merchant(merchant_name: str) -> Dict[str, Any]:
         "found": True,
         "message": f"'{merchant_name}' 후보 {len(merchants)}개",
         "count": len(merchants),
-        "merchants": merchants
+        "merchants": merchants,
+        "search_type": "name"
     }
 
     # user_info 키를 함께 달고 싶을 때를 대비하여 생성 가능 -> 참고하세요!
