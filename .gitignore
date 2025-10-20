@@ -3,4 +3,12 @@ __pycache__/
 *.py[cod]
 
 # Streamlit secrets (민감 정보)
-.streamlit/secrets.toml
+.streamlit/secrets.toml__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store
+.idea/
+.vscode/
+.streamlit/
+.env

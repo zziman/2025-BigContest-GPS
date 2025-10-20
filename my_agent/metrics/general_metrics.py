@@ -2,22 +2,28 @@
 # -*- coding: utf-8 -*-
 """
 General Metrics Builder
-- 목적: General 노드 전용 보조 지표 (main_metrics 보완용)
-- 특징: main_metrics와 중복 없이 맥락/상권 정보만 제공
+- 목적: General 노드 전용 보조 지표 (경쟁력 비교 + 상권 환경)
+- 특징: Main/Strategy/user_info와 중복 없음
 """
 
+import numpy as np
+import pandas as pd
 from typing import Dict, Any
 from my_agent.utils.tools import load_store_and_area_data
 
 
-def _safe(x, default=0.0):
-    # 빈 문자열 또는 None 처리
-    if x in [None, ""]:
+# ─────────────────────────
+# Helpers
+# ─────────────────────────
+def _safe(x, default=None):
+    """결측값 처리 (NaN, None 등) → default"""
+    if x is None:
         return default
-    # 숫자 타입일 경우 float 변환
-    if isinstance(x, (int, float)):
-        return float(x)
-    # 문자열이나 기타 타입은 그대로 반환
+    try:
+        if pd.isna(x) or (isinstance(x, str) and x.strip() in ["", "NaN", "nan", "None"]):
+            return default
+    except Exception:
+        pass
     return x
 
 
@@ -41,16 +47,29 @@ def _safe_int(x, default=0) -> int:
         return default
 
 
+def _drop_na_metrics(d: Dict[str, Any]) -> Dict[str, Any]:
+    """NaN/None 값을 가진 항목은 제외"""
+    return {
+        k: v for k, v in d.items() 
+        if v is not None and not (isinstance(v, float) and np.isnan(v))
+    }
+
+
+# ─────────────────────────
+# Main Builder
+# ─────────────────────────
 def build_general_metrics(store_num: str) -> Dict[str, Any]:
     """
-    General 노드용 보조 지표 (main_metrics 보완)
+    General 노드용 보조 지표 (6개)
+    - 경쟁력 비교: 업종/상권 내 순위, 편차, 리스크
+    - 상권 환경: 경쟁 강도, 상권 폐업률
     
     Returns:
         {
             "general_metrics": {
-                "가게_기본정보": {...},    # main에 없는 기본 정보
-                "상권_환경": {...},        # 입지/경쟁 환경
-                "고객_세부분포": {...}      # 연령대별 세부 정보
+                "업종매출지수_백분위": ...,
+                "동일_상권_내_매출_순위_비율": ...,
+                ...
             },
             "yyyymm": "202501"
         }
@@ -68,76 +87,29 @@ def build_general_metrics(store_num: str) -> Dict[str, Any]:
     yyyymm = _safe(store.get("기준년월"), "정보없음")
     
     # ═════════════════════════════════════════
-    # 1. 가게_기본정보 (main에 없는 것만)
+    # 1. 경쟁력 비교 (4개)
     # ═════════════════════════════════════════
-    brand_code = _safe(store.get("브랜드구분코드"), "정보없음")
-    
-    if brand_code == "F":
-        brand_type = "프랜차이즈"
-    elif brand_code == "I":
-        brand_type = "개인점"
-    else:
-        brand_type = str(brand_code) if brand_code != "정보없음" else "정보없음"
-    
-    가게_기본정보 = {
-        "상권유형": _safe(store.get("상권유형_지리"), "정보없음"),
-        "브랜드형태": brand_type,
-        "운영기간_개월": _safe_int(store.get("영업_경과_개월"), 0),
-        "개인사업자여부": _safe(store.get("개인사업자여부"), "정보없음"),
-        "폐업여부": _safe(store.get("폐업여부"), "정보없음"),
+    general_metrics = {
+        "업종매출지수_백분위": _safe_float(store.get("업종매출지수_백분위"), None),
+        "동일_상권_내_매출_순위_비율": _safe_float(store.get("동일_상권_내_매출_순위_비율"), None),
+        "업종매출_편차": _safe_float(store.get("업종매출_편차"), None),
+        "동일_업종_내_해지_가맹점_비중": _safe_float(store.get("동일_업종_내_해지_가맹점_비중"), None),
     }
     
     # ═════════════════════════════════════════
-    # 2. 상권_환경 (입지/경쟁 환경)
+    # 2. 상권 환경 (2개)
     # ═════════════════════════════════════════
-    상권_환경 = {}
     if biz and isinstance(biz, dict):
-        상권_환경 = {
-            # 인구 (활성도)
-            "유동인구수": _safe_int(biz.get("총_유동인구_수"), 0),
-            "상주인구수": _safe_int(biz.get("총_상주인구_수"), 0),
-            "직장인구수": _safe_int(biz.get("총_직장_인구_수"), 0),
-            
-            # 접근성
-            "접근성점수": _safe_float(biz.get("접근성_점수"), 0.0),
-            "지하철역수": _safe_int(biz.get("지하철_역_수"), 0),
-            "버스정거장수": _safe_int(biz.get("버스_정거장_수"), 0),
-            
-            # 경쟁 강도
-            "전체점포수": _safe_int(biz.get("점포_수"), 0),
-            "유사업종점포수": _safe_int(biz.get("유사_업종_점포_수"), 0),
-            "프랜차이즈점포수": _safe_int(biz.get("프랜차이즈_점포_수"), 0),
-            
-            # 개업/폐업 동향
-            "개업율": _safe_float(biz.get("개업_율"), 0.0),
-            "폐업률": _safe_float(biz.get("폐업_률"), 0.0),
-        }
+        general_metrics.update({
+            "상권단위_유사_업종_점포_수": _safe_int(biz.get("유사_업종_점포_수"), None),
+            "상권단위_폐업_률": _safe_float(biz.get("폐업_률"), None),
+        })
     
-    # ═════════════════════════════════════════
-    # 3. 고객_세부분포 (main의 핵심고객 보완용)
-    # ═════════════════════════════════════════
-    고객_세부분포 = {
-        "남성_20대이하": _safe_float(store.get("남성_20대이하_고객_비중"), 0.0),
-        "남성_30대": _safe_float(store.get("남성_30대_고객_비중"), 0.0),
-        "남성_40대": _safe_float(store.get("남성_40대_고객_비중"), 0.0),
-        "남성_50대": _safe_float(store.get("남성_50대_고객_비중"), 0.0),
-        "남성_60대이상": _safe_float(store.get("남성_60대이상_고객_비중"), 0.0),
-        "여성_20대이하": _safe_float(store.get("여성_20대이하_고객_비중"), 0.0),
-        "여성_30대": _safe_float(store.get("여성_30대_고객_비중"), 0.0),
-        "여성_40대": _safe_float(store.get("여성_40대_고객_비중"), 0.0),
-        "여성_50대": _safe_float(store.get("여성_50대_고객_비중"), 0.0),
-        "여성_60대이상": _safe_float(store.get("여성_60대이상_고객_비중"), 0.0),
-    }
+    # NaN 제거
+    general_metrics = _drop_na_metrics(general_metrics)
     
-    # ─────────────────────────
-    # 최종 반환
-    # ─────────────────────────
     return {
-        "general_metrics": {
-            "가게_기본정보": 가게_기본정보,
-            "상권_환경": 상권_환경,
-            "고객_세부분포": 고객_세부분포,
-        },
+        "general_metrics": general_metrics,
         "yyyymm": yyyymm
     }
 
