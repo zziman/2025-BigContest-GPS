@@ -35,16 +35,31 @@ def create_graph():
     
     # ─── 엣지 ───
     workflow.set_entry_point("router")
-    workflow.add_edge("router", "web_augment")
+    
+    # ✅ router 후 need_clarify 체크
+    def _after_router(state):
+        if state.get("need_clarify"):
+            print("[GRAPH] need_clarify=True 감지 → 즉시 종료")
+            return "clarify"
+        return "continue"
+    
+    workflow.add_conditional_edges(
+        "router",
+        _after_router,
+        {
+            "clarify": END,  # ✅ 후보 선택 필요 → 즉시 종료
+            "continue": "web_augment"  # ✅ 정상 진행
+        }
+    )
 
-    def _route_intent(state):
-        intent = (state.get("intent") or "GENERAL").upper()
-        if intent in ["SNS", "REVISIT", "ISSUE", "GENERAL"]:
-            return intent
-        return "GENERAL"
-    ## 확인하고 싶으면 자기 노드 이름으로 변환
     # def _route_intent(state):
+    #     intent = (state.get("intent") or "GENERAL").upper()
+    #     if intent in ["SNS", "REVISIT", "ISSUE", "GENERAL"]:
+    #         return intent
     #     return "GENERAL"
+    ## 확인하고 싶으면 자기 노드 이름으로 변환
+    def _route_intent(state):
+        return "GENERAL"
 
     workflow.add_conditional_edges(
         "web_augment",

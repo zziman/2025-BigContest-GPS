@@ -39,6 +39,14 @@ def _get_config(key: str, default=None):
     # 3. 기본값
     return default
 
+def get_bool(key: str, default: bool = False) -> bool:
+    """Streamlit secrets > env > default 순서로 매 호출 시점에 불린값을 읽음"""
+    v = _get_config(key, None)
+    if v is None:
+        return default
+    if isinstance(v, bool):
+        return v
+    return str(v).strip().lower() in ("1", "true", "yes", "y", "on")
 
 # ═══════════════════════════════════════════════════════════
 # API Keys
@@ -91,11 +99,5 @@ LLM_MAX_RETRIES = int(_get_config("LLM_MAX_RETRIES", "2"))
 CONFIRM_ON_MULTI = str(_get_config("CONFIRM_ON_MULTI", "0")) == "1"
 ENABLE_RELEVANCE_CHECK = str(_get_config("ENABLE_RELEVANCE_CHECK", "1")) == "1"
 ENABLE_MEMORY = str(_get_config("ENABLE_MEMORY", "1")) == "1"
-
-# ═══════════════════════════════════════════════════════════
-# 체크포인트 설정
-# ═══════════════════════════════════════════════════════════
-CHECKPOINT_DIR = PROJECT_ROOT / ".checkpoints"
-CHECKPOINT_DIR.mkdir(exist_ok=True)
 
 IntentType = Literal["SNS", "REVISIT", "ISSUE", "GENERAL"]
