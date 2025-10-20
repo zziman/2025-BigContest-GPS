@@ -154,10 +154,6 @@ if __name__ == "__main__":
         sys.exit(1)
     
     store_id = sys.argv[1]
-<<<<<<< Updated upstream
-    result = build_general_metrics(store_id)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-=======
     
     try:
         result = build_general_metrics(store_id)
@@ -166,4 +162,3 @@ if __name__ == "__main__":
         print(f"❌ 에러 발생: {e}")
         import traceback
         traceback.print_exc()
->>>>>>> Stashed changes
