@@ -33,9 +33,9 @@ from my_agent.utils.config import (
 
 
 # 경로만 절대경로화
-FRANCHISE_CSV  = Path(_FRANCHISE).expanduser().resolve()
-BIZ_AREA_CSV   = Path(_BIZAREA).expanduser().resolve()
-ADMIN_DONG_CSV = Path(_ADMIN).expanduser().resolve()
+FRANCHISE_CSV  = Path(_FRANCHISE).expanduser()
+BIZ_AREA_CSV   = Path(_BIZAREA).expanduser()
+ADMIN_DONG_CSV = Path(_ADMIN).expanduser()
 
 
 # 전역 DataFrame 캐시
