@@ -76,6 +76,7 @@ def build_main_metrics(store_num: str) -> Dict[str, Any]:
     
     bizarea_metrics = _drop_na_metrics(bizarea_metrics)
 
+
     return {
         "main_metrics": main_metrics,
         "상권_단위_정보": bizarea_metrics
