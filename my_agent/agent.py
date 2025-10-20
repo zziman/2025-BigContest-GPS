@@ -57,6 +57,7 @@ def create_graph():
     #     if intent in ["SNS", "REVISIT", "ISSUE", "GENERAL"]:
     #         return intent
     #     return "GENERAL"
+    
     ## 확인하고 싶으면 자기 노드 이름으로 변환
     def _route_intent(state):
         return "GENERAL"

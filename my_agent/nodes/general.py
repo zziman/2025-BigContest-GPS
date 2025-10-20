@@ -13,7 +13,8 @@ import json
 
 from my_agent.utils.config import GOOGLE_API_KEY, LLM_MODEL, LLM_TEMPERATURE
 from my_agent.utils.tools import resolve_store, load_store_and_area_data
-
+from my_agent.metrics.main_metrics import build_main_metrics
+from my_agent.metrics.general_metrics import build_general_metrics
 
 class GeneralNode:
     def __init__(self):
@@ -54,7 +55,6 @@ class GeneralNode:
                 main_metrics = None
                 상권_단위_정보 = None
                 try:
-                    from my_agent.metrics.main_metrics import build_main_metrics
                     main_result = build_main_metrics(store_id)
                     main_metrics = main_result.get("main_metrics")
                     상권_단위_정보 = main_result.get("상권_단위_정보")
@@ -75,7 +75,6 @@ class GeneralNode:
                 # ✅ General Metrics 로드 (선택)
                 general_metrics = None
                 try:
-                    from my_agent.metrics.general_metrics import build_general_metrics
                     general_result = build_general_metrics(store_id)
                     general_metrics = general_result.get("general_metrics")
                     print("[INFO] ✅ General Metrics 로드 성공")
@@ -113,6 +112,11 @@ class GeneralNode:
         # ═════════════════════════════════════════
         try:
             response = self.llm.invoke(prompt).content
+            
+            # ✅ 웹 출처 추가
+            if web_snippets:
+                response = self._append_web_sources(response, web_snippets)
+            
             state["final_response"] = response
             state["error"] = None
             state["need_clarify"] = False
@@ -200,9 +204,9 @@ class GeneralNode:
 {user_query}
 
 ### 답변 형식
-1. **핵심 답변**
+1. **핵심 답변** (2-3문장)
 2. **상세 설명** (근거/사례 포함)
-3. **실전 조언**
+3. **실전 조언** (구체적으로)
 """
     
     def _format_web_snippets(self, snippets: list) -> str:
@@ -224,6 +228,39 @@ class GeneralNode:
                 lines.append(f"   └ {url}")
         
         return "\n".join(lines)
+    
+    def _append_web_sources(self, response: str, web_snippets: list) -> str:
+        """✅ 웹 출처 추가 (토글 형식 + 요약)"""
+        if not web_snippets:
+            return response
+        
+        sources = []
+        sources.append("\n\n---")
+        sources.append("<details>")
+        sources.append("<summary>🔗 <b>참고 출처</b> (클릭하여 펼치기)</summary>")
+        sources.append("\n")
+        
+        for i, snip in enumerate(web_snippets[:5], 1):
+            title = snip.get("title", "제목 없음")
+            url = snip.get("url", "")
+            source = snip.get("source", "출처 불명")
+            snippet = snip.get("snippet", "")
+            
+            sources.append(f"**{i}. {title}**")
+            if source:
+                sources.append(f"  - 출처: {source}")
+            if snippet:
+                # 간단 요약 (첫 100자만)
+                summary = snippet[:100] + ("..." if len(snippet) > 100 else "")
+                sources.append(f"  - 요약: {summary}")
+            if url:
+                sources.append(f"  - 링크: {url}")
+            sources.append("")  # 빈 줄
+        
+        sources.append("</details>")
+        sources.append("---")
+        
+        return response + "\n".join(sources)
 
 
 # ═════════════════════════════════════════
