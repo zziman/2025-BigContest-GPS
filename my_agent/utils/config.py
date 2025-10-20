@@ -11,7 +11,7 @@ from typing import Literal
 # ═══════════════════════════════════════════════════════════
 # 프로젝트 경로
 # ═══════════════════════════════════════════════════════════
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 MCP_DIR = PROJECT_ROOT / "mcp"
 
