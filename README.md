@@ -1,4 +1,4 @@
-# [1019] 2025 BigContest – AI 비밀상담소 (PoC)
+# [1020] 2025 BigContest – AI 비밀상담소 (PoC)
 
 소상공인 가맹점 데이터를 기반으로 전략 초안을 자동 생성하는 에이전트.
 LangGraph로 멀티턴·분기·재시도를 제어하고, MCP 툴로 CSV 데이터를 조회한다.
@@ -20,6 +20,7 @@ LangGraph로 멀티턴·분기·재시도를 제어하고, MCP 툴로 CSV 데이
 │     ├─ postprocess.py
 │     ├─ chat_history.py                      
 │     ├─ tools.py                      
+<<<<<<< Updated upstream
 │     ├─ metrics/         
 │     │  ├─ general_metrics.py  # 폭넓게 사용할 수 있는 지표나 데이터 불러오는 파일
 │     │  ├─ issue_metrics.py  # issue 노드에서 사용해야 하는 issue만의 주요 지표를 불러오고 이상지표 탐지
@@ -27,6 +28,15 @@ LangGraph로 멀티턴·분기·재시도를 제어하고, MCP 툴로 CSV 데이
 │     │  ├─ revisit_metrics.py  # revisit 노드에서 사용해야 하는 revisit만의 주요 지표를 불러오고 이상지표 탐지
 │     │  ├─ sns_metrics.py  # sns 노드에서 사용해야 하는 sns만의 주요 지표를 불러오고 이상지표 탐지
 │     │  └─ strategy_metrics.py  # 전략을 낼 때 참고해야 할 전략 강도 지표 불러오는 파일
+=======
+│     ├─ metrics/        
+│     │  ├─ general_metrics.py 
+│     │  ├─ issue_metrics.py  
+│     │  ├─ main_metrics.py 
+│     │  ├─ revisit_metrics.py 
+│     │  ├─ sns_metrics.py 
+│     │  └─ strategy_metrics.py  
+>>>>>>> Stashed changes
 │     └─ nodes/
 │        ├─ router.py                  
 │        ├─ sns.py                     
@@ -45,16 +55,32 @@ LangGraph로 멀티턴·분기·재시도를 제어하고, MCP 툴로 CSV 데이
 ├─ data/
 │  ├─ franchise_data_addmetrics.csv
 │  ├─ biz_area_addmetrics.csv
+<<<<<<< Updated upstream
 │  └─ admin_dong.csv
+=======
+│  ├─ admin_dong.csv
+│  ├─ label_encoder_store.pkl
+│  └─ preprocessed_df.csv
+>>>>>>> Stashed changes
 │
 ├─ assets/
 │
+├─ docs/
+│
+├─ AutogluonModels/
+│
+├─ time_series.py   
 ├─ dashboard.py           
 ├─ streamlit_app.py                    
 ├─ 디버깅.py
 ├─ .streamlit/
+<<<<<<< Updated upstream
 │  └─ secrets.toml                                                   
 └─ requirements.txt                              
+=======
+│  └─ secrets.toml                                                  
+└─ requirements.txt                                 
+>>>>>>> Stashed changes
 ```
 
 <br>
@@ -86,7 +112,7 @@ SEARCH_RECENCY_DAYS = 60
 
 # --- 정책/토글 ---
 MCP_ENABLED = 1
-CONFIRM_ON_MULTI = 0
+CONFIRM_ON_MULTI = 1
 LLM_MODEL = "gemini-2.5-flash"
 LLM_TEMPERATURE = 0.2
 ENABLE_RELEVANCE_CHECK = true
