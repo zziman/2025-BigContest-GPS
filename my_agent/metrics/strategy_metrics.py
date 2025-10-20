@@ -12,19 +12,25 @@ Strategy Metrics Builder
       "strategy_metrics": {...}
     }
 """
-
+import numpy as np
 from typing import Dict, Any, List
 from my_agent.utils.tools import load_store_and_area_data
 
-def _safe(x, default=0.0):
-    # 빈 문자열 또는 None 처리
-    if x in [None, ""]:
-        return default
-    # 숫자 타입일 경우 float 변환
-    if isinstance(x, (int, float)):
-        return float(x)
-    # 문자열이나 기타 타입은 그대로 반환
+def _safe(x):
+    """결측값 처리 (NaN, None, 빈 문자열 등) → None"""
+    if x is None:
+        return None
+    try:
+        if pd.isna(x) or (isinstance(x, str) and x.strip() in ["", "NaN", "nan", "None"]):
+            return None
+    except Exception:
+        pass
     return x
+
+
+def _drop_na_metrics(d: Dict[str, Any]) -> Dict[str, Any]:
+    """NaN/None 값을 가진 항목은 제외"""
+    return {k: v for k, v in d.items() if v is not None and not (isinstance(v, float) and np.isnan(v))}
 
 
 def build_strategy_metrics(store_num: str) -> Dict[str, Any]:
@@ -35,18 +41,17 @@ def build_strategy_metrics(store_num: str) -> Dict[str, Any]:
     ## include_region은 행정동 데이터를 추가 하냐 마냐 (기본 False)
 
     store = state.get("store_data")
-    bizarea = state.get("bizarea_data")
+
     if not store:
         raise ValueError("store_data not found. Check store_num.")
-    if not bizarea:
-        raise ValueError("bizarea_data not found.")
 
     # 전략 강도 지표 수집
     strategy_metrics = {
-        "취소율_구간": _safe(store.get("취소율_구간")),
+        "취소율_구간(6개구간)": _safe(store.get("취소율_구간")),
         "상권과_이동성_적합도": _safe(store.get("이동성_적합도")),
         "상권과_연령대_적합도": _safe(store.get("연령대_적합도"))}
 
+    strategy_metrics = _drop_na_metrics(strategy_metrics)
 
     return {
         "strategy_metrics": strategy_metrics
