@@ -20,6 +20,13 @@ LangGraph로 멀티턴·분기·재시도를 제어하고, MCP 툴로 CSV 데이
 │     ├─ postprocess.py
 │     ├─ chat_history.py                      
 │     ├─ tools.py                      
+│     ├─ metrics/         
+│     │  ├─ general_metrics.py  # 폭넓게 사용할 수 있는 지표나 데이터 불러오는 파일
+│     │  ├─ issue_metrics.py  # issue 노드에서 사용해야 하는 issue만의 주요 지표를 불러오고 이상지표 탐지
+│     │  ├─ main_metrics.py  # 모든 노드에서 사용될 주요 지표 데이터에서 불러오는 파일
+│     │  ├─ revisit_metrics.py  # revisit 노드에서 사용해야 하는 revisit만의 주요 지표를 불러오고 이상지표 탐지
+│     │  ├─ sns_metrics.py  # sns 노드에서 사용해야 하는 sns만의 주요 지표를 불러오고 이상지표 탐지
+│     │  └─ strategy_metrics.py  # 전략을 낼 때 참고해야 할 전략 강도 지표 불러오는 파일
 │     └─ nodes/
 │        ├─ router.py                  
 │        ├─ sns.py                     
@@ -36,19 +43,18 @@ LangGraph로 멀티턴·분기·재시도를 제어하고, MCP 툴로 CSV 데이
 │  └─ adapter_client.py
 │
 ├─ data/
-│  ├─ franchise_data.csv
-│  ├─ biz_area.csv
+│  ├─ franchise_data_addmetrics.csv
+│  ├─ biz_area_addmetrics.csv
 │  └─ admin_dong.csv
 │
 ├─ assets/
 │
 ├─ dashboard.py           
 ├─ streamlit_app.py                    
-├─ local_test.py
+├─ 디버깅.py
 ├─ .streamlit/
-│  └─ secrets.toml                     
-├─ .env                                
-└─ requirements.txt                  
+│  └─ secrets.toml                                                   
+└─ requirements.txt                              
 ```
 
 <br>
