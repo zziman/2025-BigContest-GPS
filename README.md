@@ -7,8 +7,8 @@ LangGraph로 멀티턴·분기·재시도를 제어하고, MCP 툴로 CSV 데이
 
 ## 폴더 구조
 [Google Drive – BigContest Data & Models](https://drive.google.com/drive/folders/1PHuQ0MktQrNGLxbpdMhAsIu1dLTfrc56?usp=sharing)에서
-label_encoder_store.pkl 과 preprocessed_df.csv 파일을 다운로드하여 프로젝트의 data 폴더에 넣고,
-AutogluonModels 폴더 전체를 프로젝트 루트(최상위 디렉터리)에 그대로 복사해서 사용 
+`label_encoder_store.pkl` 과 `preprocessed_df.csv` 파일을 다운로드하여 프로젝트의 data 폴더에 넣고,
+`AutogluonModels` 폴더 전체를 프로젝트 루트(최상위 디렉터리)에 그대로 복사해서 사용 
 
 ```
 2025-BigContest/
