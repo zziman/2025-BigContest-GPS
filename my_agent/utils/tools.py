@@ -5,7 +5,7 @@
 핵심 유틸리티
 - helpers (정규화/검증/간단 변환)
 - store_resolver (가맹점 후보 확정 + user_info 구성)
-- data_loader (store/bizarea/region 데이터 조회)
+- data_loader (store/bizarea 데이터 조회)
 """
 
 from typing import Dict, Any, Tuple, List, Optional
@@ -295,18 +295,19 @@ def resolve_store(state: GraphState) -> GraphState:
 def _build_user_info(merchant: Dict[str, Any]) -> Dict[str, Any]:
     """
     search_merchant 결과로 user_info 생성
-    
-    Note: search_merchant는 기본 정보만 반환하므로
-          일부 필드는 None 또는 기본값으로 설정
+    Note: search_merchant는 기본 정보만 반환하므로 일부 필드는 None 또는 기본값
     """
+    marketing_area = merchant.get("상권") or merchant.get("상권_지리")  # ✅ 상권 우선, 없으면 상권_지리
+
     user_info = {
         "store_name": merchant.get("가맹점명"),
         "store_num": str(merchant.get("가맹점_구분번호", "")),
         "location": merchant.get("가맹점_주소"),
-        "marketing_area": None,  # load_store_data에서 채워짐
+        "marketing_area": marketing_area,
+        "marketing_area_type_geo": merchant.get("상권유형_지리"),  # ✅ 단일 컬럼만 사용
         "industry": merchant.get("업종"),
-        "months_operating": None,  # load_store_data에서 채워짐
-        "is_individual": None,  # load_store_data에서 채워짐 (1=개인, 0=프랜차이즈)
+        "months_operating": None,
+        "is_individual": None,
     }
     
     print("\n" + "="*60)
@@ -343,15 +344,17 @@ def _build_user_info_from_store_data(store_data: Dict[str, Any]) -> Dict[str, An
         business_type = None
     
     print(f"[DEBUG] 변환된 business_type: {business_type}")
+    marketing_area = store_data.get("상권") or store_data.get("상권_지리")
     
     user_info = {
         "store_name": store_data.get("가맹점명"),
         "store_num": str(store_data.get("가맹점_구분번호", "")),
         "location": store_data.get("가맹점_주소"),
-        "marketing_area": store_data.get("상권_지리"),
+        "marketing_area": marketing_area,
+        "marketing_area_type_geo": store_data.get("상권유형_지리"),  # ✅ 단일 컬럼만 사용
         "industry": store_data.get("업종"),
         "months_operating": safe_int(store_data.get("영업_경과_개월")),
-        "is_individual": business_type,  # "개인사업자" or "프랜차이즈"
+        "is_individual": business_type,
     }
     
     print(f"\n생성된 user_info (완전한 정보):")
@@ -366,13 +369,12 @@ def _build_user_info_from_store_data(store_data: Dict[str, Any]) -> Dict[str, An
 # 본죽 트렌드 예측해줘
 
 # ─────────────────────────
-# Data Loader (store + bizarea [+ region 옵션])
+# Data Loader (store + bizarea)  ← region 제거 버전
 # ─────────────────────────
 def load_store_and_area_data(state: GraphState, include_region: bool = False, latest_only: bool = True) -> GraphState:
     """
     store_id 기준으로 store_data + bizarea_data 조회
-    include_region=True 로 지정한 경우 region_data도 조회
-    (기본값 False → 의도적으로 조회하지 않음)
+    ⚠️ 행정동(region) 로딩은 제거되었습니다. include_region 인자는 더 이상 사용되지 않습니다.
     """
     store_id = state.get("store_id")
     if not store_id:
@@ -393,50 +395,8 @@ def load_store_and_area_data(state: GraphState, include_region: bool = False, la
     except Exception:
         state["bizarea_data"] = None
 
-    # 3) region_data (옵션)
-    if include_region:
-        try:
-            res_region = call_mcp_tool("load_region_data", store_row=state["store_data"])
-            state["region_data"] = res_region["data"] if res_region.get("success") else None
-        except Exception:
-            state["region_data"] = None
-
-    return state
-
-# ─────────────────────────
-# Data Loader (store + bizarea [+ region 옵션])
-# ─────────────────────────
-def load_store_and_area_data(state: GraphState, include_region: bool = False, latest_only: bool = True) -> GraphState:
-    """
-    store_id 기준으로 store_data + bizarea_data 조회
-    include_region=True 로 지정한 경우 region_data도 조회
-    (기본값 False → 의도적으로 조회하지 않음)
-    """
-    store_id = state.get("store_id")
-    if not store_id:
-        state["error"] = "store_id가 없습니다. 먼저 가맹점을 선택하세요."
-        return state
-
-    # 1) store_data (최신 1건)
-    res_store = call_mcp_tool("load_store_data", store_id=store_id, latest_only=latest_only)
-    if not res_store.get("success"):
-        state["error"] = res_store.get("error", "가맹점 데이터 조회 실패")
-        return state
-    state["store_data"] = res_store["data"]
-
-    # 2) bizarea_data (상권)
-    try:
-        res_biz = call_mcp_tool("load_bizarea_data", store_row=state["store_data"])
-        state["bizarea_data"] = res_biz["data"] if res_biz.get("success") else None
-    except Exception:
-        state["bizarea_data"] = None
-
-    # 3) region_data (옵션) -> False로 하면 아예 안 불러와짐 (기본이 False)
-    if include_region:
-        try:
-            res_region = call_mcp_tool("load_region_data", store_row=state["store_data"])
-            state["region_data"] = res_region["data"] if res_region.get("success") else None
-        except Exception:
-            state["region_data"] = None
+    # ✅ region 완전 제거 (혹시 기존 state에 남아있다면 정리)
+    if "region_data" in state:
+        del state["region_data"]
 
     return state
