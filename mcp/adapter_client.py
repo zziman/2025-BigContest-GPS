@@ -8,8 +8,7 @@ from typing import List
 from mcp.tools import (
     search_merchant,
     load_store_data,
-    load_bizarea_data,
-    load_region_data
+    load_bizarea_data
 )
 from mcp.tools_web import web_search
 
@@ -29,7 +28,6 @@ def call_mcp_tool(tool_name: str, **kwargs) -> dict:
         "search_merchant": search_merchant,
         "load_store_data": load_store_data,
         "load_bizarea_data": load_bizarea_data,
-        "load_region_data": load_region_data,
         "web_search": web_search
     }
     tool_func = tools_map.get(tool_name)

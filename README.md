@@ -57,7 +57,11 @@ LangGraph로 멀티턴·분기·재시도를 제어하고, MCP 툴로 CSV 데이
 │  ├─ biz_area_addmetrics.csv
 │  ├─ admin_dong.csv
 │  ├─ label_encoder_store.pkl
-│  └─ preprocessed_df.csv
+│  ├─ preprocessed_df.csv
+│  └─ data.duckdb
+│
+├─ assets/
+│  └─ build_duckdb.py
 │
 ├─ assets/
 │
@@ -95,7 +99,7 @@ cat > .streamlit/secrets.toml <<'TOML'
 GOOGLE_API_KEY = "your_key"                 
 NAVER_CLIENT_ID = "your_naver_client_id"
 NAVER_CLIENT_SECRET = "your_naver_secret"
-TAVILY_API_KEY = "your_key"                         
+SERPER_API_KEY = "your_key"                         
 
 # --- 검색 파라미터 ---
 SEARCH_TIMEOUT = 12
