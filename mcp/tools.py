@@ -393,52 +393,5 @@ def load_bizarea_data(store_row: Dict[str, Any], all_matches: bool = False) -> D
     if hit.empty:
         return {"success": False, "data": None, "error": "bizarea not found"}
 
-<<<<<<< HEAD
-    if all_matches:
-        return {"success": True, "data": _to_serializable_records(hit), "error": None}
-
-def load_region_data(store_row: Dict[str, Any], all_matches: bool = False) -> Dict[str, Any]:
-    """
-    행정동(admin_dong) 데이터 조회 (원본 컬럼 그대로)
-    Args:
-        store_row: load_store_data(..., latest_only=True/False) 결과 중 1행(dict)
-        all_matches: True → 매칭되는 모든 행 반환(list), False → 첫 1행만 반환(dict)
-    매핑 키:
-        기준년월       = store_row['기준년월']
-        행정동_코드_명 = store_row['매핑용_행정동']
-        업종           = store_row['업종']
-    * 사용 패턴: store = load_store_data(...)[\"data\"] → load_region_data(store)
-    """
-    df_region = _load_region_df()
-
-    required = ["기준년월", "매핑용_행정동", "업종"]
-    missing = [k for k in required if k not in store_row or store_row.get(k) in (None, "", float("nan"))]
-    if missing:
-        return {
-            "success": False,
-            "data": None,
-            "error": f"store_row lacks keys: {', '.join(missing)}"
-        }
-
-    yyyymm = str(store_row["기준년월"])
-    admin_code = str(store_row["매핑용_행정동"])
-    industry = str(store_row["업종"])
-
-    mask = (
-        (df_region["기준년월"] == yyyymm) &
-        (df_region["행정동_코드_명"] == admin_code) &
-        (df_region["업종"] == industry)
-    )
-    hit = df_region[mask].copy()
-
-    if hit.empty:
-        return {"success": False, "data": None, "error": "region not found"}
-
-    if all_matches:
-        return {"success": True, "data": _to_serializable_records(hit), "error": None}
-    else:
-        return {"success": True, "data": _to_serializable_row(hit.iloc[0]), "error": None}
-=======
     # 정렬 불필요, 상권_코드도 없음 → 첫 행만 직 반환
     return {"success": True, "data": _to_serializable_row(hit.iloc[0]), "error": None}
->>>>>>> 898ffca (feat: Duck DB)
