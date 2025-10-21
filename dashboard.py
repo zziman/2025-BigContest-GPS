@@ -1,3 +1,4 @@
+# dashboard.py
 # -*- coding: utf-8 -*-
 """
 대시보드 데이터 로직 및 시각화
@@ -11,6 +12,10 @@ from datetime import datetime
 import plotly.graph_objects as go
 import plotly.express as px
 
+import duckdb
+from pathlib import Path 
+
+from my_agent.utils.config import DUCKDB_PATH, USE_DUCKDB
 # ==== THEME ====
 THEME_MAIN  = "#7742e3"
 THEME_DARK  = "#5b2fc7"
@@ -87,16 +92,65 @@ def as_pct_series(series):
 
 # ========= 데이터 로드 =========
 def load_all_data(franchise_csv, biz_area_csv):
-    store_need = ["기준년월", "가맹점_구분번호", "업종", "상권_지리"]
-    trade_need = ["기준년월", "업종", "상권_지리"]
-    store, _ = smart_read_csv(franchise_csv, expect_cols=store_need)
-    trade, _ = smart_read_csv(biz_area_csv, expect_cols=trade_need)
+    """대시보드용 데이터 로드 (DuckDB 우선)"""
+    
+    # ─────────────────────────────────────────
+    # DuckDB 사용
+    # ─────────────────────────────────────────
+    if USE_DUCKDB:
+        try:
+            db_path = Path(DUCKDB_PATH).expanduser()
+            if not db_path.exists():
+                raise FileNotFoundError(f"DuckDB 파일 없음: {db_path}")
+            
+            con = duckdb.connect(str(db_path), read_only=True)
+            
+            # 전체 데이터 로드 (대시보드는 전체 데이터 필요)
+            store = con.execute("SELECT * FROM franchise").fetchdf()
+            trade = con.execute("SELECT * FROM biz_area").fetchdf()
+            
+            con.close()
+            
+            print(f"✅ DuckDB 로드 완료: franchise {len(store):,} rows, biz_area {len(trade):,} rows")
+            
+        except Exception as e:
+            print(f"⚠️  DuckDB 로드 실패, CSV로 대체: {e}")
+            # DuckDB 실패 시 CSV로 fallback
+            store_need = ["기준년월", "가맹점_구분번호", "업종", "상권_지리"]
+            trade_need = ["기준년월", "업종", "상권_지리"]
+            store, _ = smart_read_csv(franchise_csv, expect_cols=store_need)
+            trade, _ = smart_read_csv(biz_area_csv, expect_cols=trade_need)
+            print(f"✅ CSV 로드 완료: franchise {len(store):,} rows, biz_area {len(trade):,} rows")
+    
+    # ─────────────────────────────────────────
+    # CSV 사용 (USE_DUCKDB=False일 때)
+    # ─────────────────────────────────────────
+    else:
+        store_need = ["기준년월", "가맹점_구분번호", "업종", "상권_지리"]
+        trade_need = ["기준년월", "업종", "상권_지리"]
+        store, _ = smart_read_csv(franchise_csv, expect_cols=store_need)
+        trade, _ = smart_read_csv(biz_area_csv, expect_cols=trade_need)
+        print(f"✅ CSV 로드 완료: franchise {len(store):,} rows, biz_area {len(trade):,} rows")
+    
+    # ─────────────────────────────────────────
+    # 공통 전처리 (기존 코드 그대로)
+    # ─────────────────────────────────────────
     store = ensure_dt(store)
     trade = ensure_dt(trade)
-    for df in (store, trade):
-        for col in ("업종", "상권_지리"):
-            clean_str_col(df, col)
-    store["MCT_KEY"] = store["가맹점_구분번호"].map(clean_str)
+    
+    # 문자열 정리
+    for col in ["가맹점명", "업종", "상권_지리"]:
+        clean_str_col(store, col)
+    for col in ["업종", "상권_지리"]:
+        clean_str_col(trade, col)
+    
+    # MCT_KEY 생성 (대시보드용 고유키)
+    if "가맹점_구분번호" in store.columns and "가맹점명" in store.columns:
+        store["MCT_KEY"] = (
+            store["가맹점_구분번호"].astype(str) + "___" + 
+            store["가맹점명"].astype(str)
+        )
+    
     return store, trade
 
 # ========= 컨텍스트 계산 =========

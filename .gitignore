@@ -12,3 +12,4 @@ venv/
 .vscode/
 .streamlit/
 .env
+data/preprocessed_df.csv

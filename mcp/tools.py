@@ -1,64 +1,68 @@
-# mcp/tools.py
-
+# mcp/tools.py (최종 정리 버전)
 # -*- coding: utf-8 -*-
 """
-MCP 툴 함수 
-- _file_exists(path): 파일 경로가 존재하는지 확인
-- _load_franchise_df(): 가맹점 CSV 로드 및 캐싱
-- _load_bizarea_df(): 상권 CSV 로드 및 캐싱
-- _load_region_df(): 행정동 CSV 로드 및 캐싱
-- _to_serializable_row(row): Series/Dict → JSON 직렬화 가능한 dict 변환
-- _to_serializable_records(df): DataFrame → JSON 직렬화 가능한 list 변환
+MCP 툴 함수 (DuckDB 기반)
 
-- search_merchant(merchant_name, top_k=20): 가맹점명 부분검색으로 후보 목록 조회
-- load_store_data(store_id, latest_only=True): 가맹점 ID 기준 데이터 조회 (최신 1건 또는 전체 이력)
-- load_bizarea_data(store_row, all_matches=False): 가맹점 데이터 기준 상권(biz area) 데이터 조회
-- load_region_data(store_row, all_matches=False): 가맹점 데이터 기준 행정동(region) 데이터 조회
+공통 매핑 컬럼: 기준년월, 업종, 상권_지리
+
+함수:
+- search_merchant(merchant_name): 가맹점명/ID 검색
+- load_store_data(store_id, latest_only): 가맹점 데이터 조회
+- load_bizarea_data(store_row, all_matches): 상권 데이터 조회
 """
 
 from __future__ import annotations
-import os
+import re
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Union
 
 import pandas as pd
-import re 
+import duckdb
 
-
-# config에서 그대로 가져오기 (Streamlit secrets/env/기본값 우선순위 유지)
 from my_agent.utils.config import (
-    FRANCHISE_CSV as _FRANCHISE,
-    BIZ_AREA_CSV  as _BIZAREA,
-    ADMIN_DONG_CSV as _ADMIN,
+    FRANCHISE_CSV, BIZ_AREA_CSV,
+    DUCKDB_PATH, USE_DUCKDB
 )
 
+# ═══════════════════════════════════════════
+# DuckDB 연결 (싱글턴)
+# ═══════════════════════════════════════════
+_DB_CONNECTION: Optional[duckdb.DuckDBPyConnection] = None
 
-# 경로만 절대경로화
-FRANCHISE_CSV  = Path(_FRANCHISE).expanduser()
-BIZ_AREA_CSV   = Path(_BIZAREA).expanduser()
-ADMIN_DONG_CSV = Path(_ADMIN).expanduser()
+
+def _get_db_connection():
+    """DuckDB 연결 획득 (재사용)"""
+    global _DB_CONNECTION
+    if _DB_CONNECTION is None:
+        db_path = Path(DUCKDB_PATH).expanduser()
+        if not db_path.exists():
+            raise FileNotFoundError(
+                f"❌ DuckDB 파일이 없습니다: {db_path}\n"
+                f"💡 먼저 실행하세요: python scripts/build_duckdb.py"
+            )
+        _DB_CONNECTION = duckdb.connect(str(db_path), read_only=True)
+    return _DB_CONNECTION
 
 
-# 전역 DataFrame 캐시
+# ═══════════════════════════════════════════
+# CSV 기반 로딩 (레거시 - USE_DUCKDB=False일 때만)
+# ═══════════════════════════════════════════
 _FRANCHISE_DF: Optional[pd.DataFrame] = None
 _BIZAREA_DF: Optional[pd.DataFrame] = None
-_REGION_DF: Optional[pd.DataFrame] = None
 
 
-# 내부 유틸
 def _file_exists(path: str) -> bool:
     return Path(path).exists() and Path(path).is_file()
 
 
 def _load_franchise_df() -> pd.DataFrame:
-    """가맹점(franchise) CSV 로드 (싱글턴 캐시)"""
+    """가맹점 CSV 로드 (싱글턴 캐시)"""
     global _FRANCHISE_DF
     if _FRANCHISE_DF is None:
         if not _file_exists(FRANCHISE_CSV):
             raise FileNotFoundError(f"franchise CSV not found: {FRANCHISE_CSV}")
         df = pd.read_csv(FRANCHISE_CSV)
-        # 문자열 기본 정리 (필드가 존재할 때만)
-        for col in ["가맹점_구분번호", "가맹점명", "기준년월", "업종", "상권_지리", "매핑용_행정동"]:
+        for col in ["가맹점_구분번호", "가맹점명", "기준년월", "업종", "상권_지리"]:
             if col in df.columns:
                 df[col] = df[col].astype(str)
         _FRANCHISE_DF = df
@@ -66,7 +70,7 @@ def _load_franchise_df() -> pd.DataFrame:
 
 
 def _load_bizarea_df() -> pd.DataFrame:
-    """상권(biz_area) CSV 로드 (싱글턴 캐시)"""
+    """상권 CSV 로드 (싱글턴 캐시)"""
     global _BIZAREA_DF
     if _BIZAREA_DF is None:
         if not _file_exists(BIZ_AREA_CSV):
@@ -79,40 +83,24 @@ def _load_bizarea_df() -> pd.DataFrame:
     return _BIZAREA_DF
 
 
-def _load_region_df() -> pd.DataFrame:
-    """행정동(admin_dong) CSV 로드 (싱글턴 캐시)"""
-    global _REGION_DF
-    if _REGION_DF is None:
-        if not _file_exists(ADMIN_DONG_CSV):
-            raise FileNotFoundError(f"admin dong CSV not found: {ADMIN_DONG_CSV}")
-        df = pd.read_csv(ADMIN_DONG_CSV)
-        for col in ["기준년월", "행정동_코드_명", "업종"]:
-            if col in df.columns:
-                df[col] = df[col].astype(str)
-        _REGION_DF = df
-    return _REGION_DF
-
-
 def _to_serializable_row(row: Union[pd.Series, Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    pandas Series/Dict 를 JSON 직렬화 가능한 dict 로 변환
-    NaN → None, 나머지는 그대로 유지 (원본 컬럼명 보존)
-    """
+    """pandas Series/Dict → JSON 직렬화"""
     if isinstance(row, dict):
         return {k: (None if pd.isna(v) else v) for k, v in row.items()}
     return {k: (None if pd.isna(v) else v) for k, v in row.to_dict().items()}
 
 
 def _to_serializable_records(df: pd.DataFrame) -> List[Dict[str, Any]]:
-    """DataFrame → List[dict] 직렬화 (NaN → None)"""
+    """DataFrame → List[dict] 직렬화"""
     if df.empty:
         return []
-    # where 로 NaN 마스킹 후 dict 변환
     df2 = df.where(pd.notna(df), None)
     return df2.to_dict(orient="records")
 
 
-# 가맹점명 검색
+# ═══════════════════════════════════════════
+# 가맹점 검색
+# ═══════════════════════════════════════════
 def search_merchant(merchant_name: str) -> Dict[str, Any]:
     """
     가맹점명 또는 가맹점_구분번호로 검색
@@ -126,10 +114,9 @@ def search_merchant(merchant_name: str) -> Dict[str, Any]:
             "message": str,
             "count": int,
             "merchants": List[dict],
-            "search_type": "id" | "name" | None  # 검색 유형
+            "search_type": "id" | "name" | None
         }
     """
-    df = _load_franchise_df()
     q = (merchant_name or "").strip()
     
     if not q:
@@ -142,215 +129,269 @@ def search_merchant(merchant_name: str) -> Dict[str, Any]:
         }
     
     # ─────────────────────────────────────────
-    # 1. 가맹점_구분번호 패턴 감지 (우선순위 높음)
+    # DuckDB 사용
     # ─────────────────────────────────────────
-    store_id_pattern = r'^[A-Z0-9]{10,11}$'
-    
-    if re.match(store_id_pattern, q.upper()):
-        print(f"[MCP] 가맹점_구분번호로 인식: {q}")
-        result = df[df["가맹점_구분번호"] == q.upper()].copy()
+    if USE_DUCKDB:
+        con = _get_db_connection()
         
-        if not result.empty:
-            # 최신 데이터만 (중복 제거)
-            result = result.sort_values("기준년월", ascending=False)
-            result = result.drop_duplicates(subset=["가맹점_구분번호"], keep="first")
+        # 1) 가맹점_구분번호 패턴 감지 (10-11자리 영숫자)
+        store_id_pattern = r'^[A-Z0-9]{10,11}$'
+        
+        if re.match(store_id_pattern, q.upper()):
+            result = con.execute("""
+                SELECT DISTINCT 
+                    가맹점_구분번호, 가맹점명, 가맹점_주소, 업종, 상권_지리
+                FROM franchise
+                WHERE 가맹점_구분번호 = ?
+                ORDER BY 기준년월 DESC
+                LIMIT 1
+            """, [q.upper()]).fetchdf()
             
-            cols = ["가맹점_구분번호", "가맹점명", "가맹점_주소", "업종"]
-            merchants = result[cols].to_dict(orient="records")
-            
-            return {
-                "found": True,
-                "message": f"가맹점_구분번호 '{q}' 조회 성공",
-                "count": 1,
-                "merchants": merchants,
-                "search_type": "id"
-            }
-        else:
+            if not result.empty:
+                merchants = result.to_dict(orient="records")
+                return {
+                    "found": True,
+                    "message": f"가맹점_구분번호 '{q}' 조회 성공",
+                    "count": 1,
+                    "merchants": merchants,
+                    "search_type": "id"
+                }
+            else:
+                return {
+                    "found": False,
+                    "message": f"가맹점_구분번호 '{q}'를 찾을 수 없습니다.",
+                    "count": 0,
+                    "merchants": [],
+                    "search_type": "id"
+                }
+        
+        # 2) 가맹점명 부분 검색 (최신 데이터만, 중복 제거)
+        result = con.execute("""
+            SELECT DISTINCT 
+                가맹점_구분번호, 가맹점명, 가맹점_주소, 업종, 상권_지리
+            FROM (
+                SELECT *, 
+                       ROW_NUMBER() OVER (PARTITION BY 가맹점_구분번호 ORDER BY 기준년월 DESC) as rn
+                FROM franchise
+                WHERE 가맹점명 LIKE ?
+            ) sub
+            WHERE rn = 1
+            ORDER BY 가맹점명
+            LIMIT 50
+        """, [f"%{q}%"]).fetchdf()
+        
+        if result.empty:
             return {
                 "found": False,
-                "message": f"가맹점_구분번호 '{q}'를 찾을 수 없습니다.",
+                "message": f"'{q}'와 일치하는 가맹점이 없습니다.",
                 "count": 0,
                 "merchants": [],
-                "search_type": "id"
+                "search_type": "name"
             }
-    
-    # ─────────────────────────────────────────
-    # 2. 가맹점명으로 검색 (기존 로직)
-    # ─────────────────────────────────────────
-    print(f"[MCP] 가맹점명으로 검색: '{q}'")
-    q_clean = q.replace("*", "")
-    
-    # 정확 일치
-    exact_match = df[df["가맹점명"] == q]
-    
-    # 부분 일치
-    if exact_match.empty:
-        mask = df["가맹점명"].str.replace("*", "", regex=False).str.contains(q_clean, case=False, na=False)
-        result = df[mask].copy()
-    else:
-        result = exact_match.copy()
-    
-    # 완화된 검색: 첫 2글자
-    if result.empty and len(q_clean) >= 2:
-        prefix = q_clean[:2]
-        mask = df["가맹점명"].str.startswith(prefix, na=False)
-        result = df[mask].copy()
-    
-    if result.empty:
+        
+        merchants = result.to_dict(orient="records")
         return {
-            "found": False,
-            "message": f"'{merchant_name}'에 해당하는 가맹점이 없습니다.",
-            "count": 0,
-            "merchants": [],
+            "found": True,
+            "message": f"'{q}' 검색 결과 {len(merchants)}개",
+            "count": len(merchants),
+            "merchants": merchants,
             "search_type": "name"
         }
     
-    # 정렬 (기존 로직)
-    result["_name_len"] = result["가맹점명"].str.len()
-    result["_star_count"] = result["가맹점명"].str.count("\*")
-    result = result.sort_values(
-        by=["_star_count", "_name_len", "가맹점명"],
-        ascending=[True, True, True]
-    ).drop(columns=["_name_len", "_star_count"])
-    
-    # 중복 제거 (같은 가맹점의 여러 시점 데이터)
-    cols = ["가맹점_구분번호", "가맹점명", "가맹점_주소", "업종"]
-    merchants = result[cols].drop_duplicates(subset=["가맹점_구분번호"]).head(20).to_dict(orient="records")
-    
-    return {
-        "found": True,
-        "message": f"'{merchant_name}' 후보 {len(merchants)}개",
-        "count": len(merchants),
-        "merchants": merchants,
-        "search_type": "name"
-    }
+    # ─────────────────────────────────────────
+    # CSV 사용 (레거시)
+    # ─────────────────────────────────────────
+    else:
+        df = _load_franchise_df()
+        store_id_pattern = r'^[A-Z0-9]{10,11}$'
+        
+        # ID 검색
+        if re.match(store_id_pattern, q.upper()):
+            result = df[df["가맹점_구분번호"] == q.upper()].copy()
+            
+            if not result.empty:
+                result = result.sort_values("기준년월", ascending=False)
+                result = result.drop_duplicates(subset=["가맹점_구분번호"], keep="first")
+                merchants = result[["가맹점_구분번호", "가맹점명", "가맹점_주소", "업종", "상권_지리"]].to_dict(orient="records")
+                
+                return {
+                    "found": True,
+                    "message": f"가맹점_구분번호 '{q}' 조회 성공",
+                    "count": 1,
+                    "merchants": merchants,
+                    "search_type": "id"
+                }
+        
+        # 가맹점명 검색
+        mask = df["가맹점명"].str.contains(q, case=False, na=False)
+        result = df[mask].copy()
+        
+        if result.empty:
+            return {
+                "found": False,
+                "message": f"'{q}'와 일치하는 가맹점이 없습니다.",
+                "count": 0,
+                "merchants": [],
+                "search_type": "name"
+            }
+        
+        result = result.sort_values("기준년월", ascending=False)
+        result = result.drop_duplicates(subset=["가맹점_구분번호"], keep="first")
+        merchants = result.head(50)[["가맹점_구분번호", "가맹점명", "가맹점_주소", "업종", "상권_지리"]].to_dict(orient="records")
+        
+        return {
+            "found": True,
+            "message": f"'{q}' 검색 결과 {len(merchants)}개",
+            "count": len(merchants),
+            "merchants": merchants,
+            "search_type": "name"
+        }
 
-    # user_info 키를 함께 달고 싶을 때를 대비하여 생성 가능 -> 참고하세요!
-    # for m in merchants:
-    #     m["user_info"] = {
-    #         "store_name": m.get("가맹점명"),
-    #         "store_num": m.get("가맹점_구분번호"),
-    #         "location": m.get("가맹점_주소"),
-    #         "marketing_area": m.get("상권") or m.get("상권_지리"),
-    #         "industry": m.get("업종"),
-    #     }
 
-
+# ═══════════════════════════════════════════
+# 가맹점 데이터 조회
+# ═══════════════════════════════════════════
 def load_store_data(store_id: str, latest_only: bool = True) -> Dict[str, Any]:
     """
     store_id 기준으로 가맹점 데이터 조회
+    
     Args:
         store_id: 가맹점_구분번호
-        latest_only: True → 최신 1건(dict), False → 전체 기간(list[dict]], 기준년월 오름차순)
+        latest_only: True → 최신 1건(dict), False → 전체 이력(list[dict])
+    
+    Returns:
+        {"success": bool, "data": dict or list, "error": str or None}
     """
-    df = _load_franchise_df()
     sid = str(store_id)
-
-    if "가맹점_구분번호" not in df.columns:
-        return {"success": False, "data": None, "error": "컬럼 '가맹점_구분번호' 없음"}
-
-    store_df = df[df["가맹점_구분번호"] == sid].copy()
-    if store_df.empty:
-        return {"success": False, "data": None, "error": f"store_id {sid} not found"}
-
-    if "기준년월" in store_df.columns:
-        store_df = store_df.sort_values("기준년월")
-
-    if latest_only:
-        latest_row = store_df.iloc[-1]
-        return {
-            "success": True,
-            "data": _to_serializable_row(latest_row),
-            "error": None
-        }
+    
+    # ─────────────────────────────────────────
+    # DuckDB 사용
+    # ─────────────────────────────────────────
+    if USE_DUCKDB:
+        con = _get_db_connection()
+        
+        if latest_only:
+            query = """
+            SELECT * FROM franchise
+            WHERE 가맹점_구분번호 = ?
+            ORDER BY 기준년월 DESC
+            LIMIT 1
+            """
+            result = con.execute(query, [sid]).fetchdf()
+            
+            if result.empty:
+                return {"success": False, "data": None, "error": f"가맹점 {sid} 없음"}
+            
+            return {
+                "success": True,
+                "data": result.iloc[0].to_dict(),
+                "error": None
+            }
+        else:
+            query = """
+            SELECT * FROM franchise
+            WHERE 가맹점_구분번호 = ?
+            ORDER BY 기준년월 ASC
+            """
+            result = con.execute(query, [sid]).fetchdf()
+            
+            if result.empty:
+                return {"success": False, "data": None, "error": f"가맹점 {sid} 없음"}
+            
+            return {
+                "success": True,
+                "data": result.to_dict("records"),
+                "error": None
+            }
+    
+    # ─────────────────────────────────────────
+    # CSV 사용 (레거시)
+    # ─────────────────────────────────────────
     else:
-        return {
-            "success": True,
-            "data": _to_serializable_records(store_df),
-            "error": None
-        }
+        df = _load_franchise_df()
+        
+        if "가맹점_구분번호" not in df.columns:
+            return {"success": False, "data": None, "error": "컬럼 '가맹점_구분번호' 없음"}
+        
+        store_df = df[df["가맹점_구분번호"] == sid].copy()
+        if store_df.empty:
+            return {"success": False, "data": None, "error": f"store_id {sid} not found"}
+        
+        if "기준년월" in store_df.columns:
+            store_df = store_df.sort_values("기준년월")
+        
+        if latest_only:
+            return {
+                "success": True,
+                "data": _to_serializable_row(store_df.iloc[-1]),
+                "error": None
+            }
+        else:
+            return {
+                "success": True,
+                "data": _to_serializable_records(store_df),
+                "error": None
+            }
 
 
+# ═══════════════════════════════════════════
+# 상권 데이터 조회
+# ═══════════════════════════════════════════
 def load_bizarea_data(store_row: Dict[str, Any], all_matches: bool = False) -> Dict[str, Any]:
+    """상권 데이터 조회
+    - DuckDB: 조건 일치 행 전부(or 1건) 반환. (상권_코드 컬럼 의존 제거)
+    - CSV  : 정확 매칭 실패 확률 0 → 항상 단건 반환 (all_matches 무시)
     """
-    상권(biz_area) 데이터 조회
-    Args:
-        store_row: load_store_data(..., latest_only=True/False) 결과 중 1행(dict)
-        all_matches: True → 매칭되는 모든 행 반환(list), False → 첫 1행만 반환(dict)
-    매핑 키:
-        기준년월 = store_row['기준년월']
-        상권_지리 = store_row['상권_지리']
-        업종     = store_row['업종']
-    * 사용 패턴: store = load_store_data(...)[\"data\"] → load_bizarea_data(store)
-    """
-    df_biz = _load_bizarea_df()
-
-    # 필수 키 확인
-    required = ["기준년월", "상권_지리", "업종"]
-    missing = [k for k in required if k not in store_row or store_row.get(k) in (None, "", float("nan"))]
+    required = ["기준년월", "업종", "상권_지리"]
+    missing = [k for k in required if k not in store_row or not store_row.get(k)]
     if missing:
-        return {
-            "success": False,
-            "data": None,
-            "error": f"store_row lacks keys: {', '.join(missing)}"
-        }
+        return {"success": False, "data": None, "error": f"필수 키 누락: {', '.join(missing)}"}
 
     yyyymm = str(store_row["기준년월"])
     area_geo = str(store_row["상권_지리"])
     industry = str(store_row["업종"])
 
-    # 필터
-    mask = (
+    if USE_DUCKDB:
+        con = _get_db_connection()
+        if all_matches:
+            # 전체 매칭 행 반환 (정렬/상권_코드 의존 제거)
+            query = """
+            SELECT *
+            FROM biz_area
+            WHERE 기준년월 = ? AND 상권_지리 = ? AND 업종 = ?
+            """
+            params = [yyyymm, area_geo, industry]
+            df = con.execute(query, params).fetchdf()
+            if df.empty:
+                return {"success": False, "data": None, "error": "상권 데이터 없음"}
+            return {"success": True, "data": df.to_dict("records"), "error": None}
+        else:
+            # 단건만 필요 → LIMIT 1 (중복 제거/정렬 불필요)
+            query = """
+            SELECT *
+            FROM biz_area
+            WHERE 기준년월 = ? AND 상권_지리 = ? AND 업종 = ?
+            LIMIT 1
+            """
+            params = [yyyymm, area_geo, industry]
+            df = con.execute(query, params).fetchdf()
+            if df.empty:
+                return {"success": False, "data": None, "error": "상권 데이터 없음"}
+            return {"success": True, "data": df.iloc[0].to_dict(), "error": None}
+
+    # ─────────────────────────────────────────
+    # CSV 분기: 정확 매칭 실패 확률 0 → 항상 단건 반환
+    # all_matches 인자는 무시(하위호환 위해 유지)
+    # ─────────────────────────────────────────
+    df_biz = _load_bizarea_df()
+    hit = df_biz[
         (df_biz["기준년월"] == yyyymm) &
         (df_biz["상권_지리"] == area_geo) &
         (df_biz["업종"] == industry)
-    )
-    hit = df_biz[mask].copy()
+    ].copy()
 
     if hit.empty:
         return {"success": False, "data": None, "error": "bizarea not found"}
 
-    if all_matches:
-        return {"success": True, "data": _to_serializable_records(hit), "error": None}
-
-def load_region_data(store_row: Dict[str, Any], all_matches: bool = False) -> Dict[str, Any]:
-    """
-    행정동(admin_dong) 데이터 조회 (원본 컬럼 그대로)
-    Args:
-        store_row: load_store_data(..., latest_only=True/False) 결과 중 1행(dict)
-        all_matches: True → 매칭되는 모든 행 반환(list), False → 첫 1행만 반환(dict)
-    매핑 키:
-        기준년월       = store_row['기준년월']
-        행정동_코드_명 = store_row['매핑용_행정동']
-        업종           = store_row['업종']
-    * 사용 패턴: store = load_store_data(...)[\"data\"] → load_region_data(store)
-    """
-    df_region = _load_region_df()
-
-    required = ["기준년월", "매핑용_행정동", "업종"]
-    missing = [k for k in required if k not in store_row or store_row.get(k) in (None, "", float("nan"))]
-    if missing:
-        return {
-            "success": False,
-            "data": None,
-            "error": f"store_row lacks keys: {', '.join(missing)}"
-        }
-
-    yyyymm = str(store_row["기준년월"])
-    admin_code = str(store_row["매핑용_행정동"])
-    industry = str(store_row["업종"])
-
-    mask = (
-        (df_region["기준년월"] == yyyymm) &
-        (df_region["행정동_코드_명"] == admin_code) &
-        (df_region["업종"] == industry)
-    )
-    hit = df_region[mask].copy()
-
-    if hit.empty:
-        return {"success": False, "data": None, "error": "region not found"}
-
-    if all_matches:
-        return {"success": True, "data": _to_serializable_records(hit), "error": None}
-    else:
-        return {"success": True, "data": _to_serializable_row(hit.iloc[0]), "error": None}
+    # 정렬 불필요, 상권_코드도 없음 → 첫 행만 직 반환
+    return {"success": True, "data": _to_serializable_row(hit.iloc[0]), "error": None}

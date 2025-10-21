@@ -54,8 +54,8 @@ def get_bool(key: str, default: bool = False) -> bool:
 GOOGLE_API_KEY = _get_config("GOOGLE_API_KEY")
 NAVER_CLIENT_ID     = _get_config("NAVER_CLIENT_ID", "")
 NAVER_CLIENT_SECRET = _get_config("NAVER_CLIENT_SECRET", "")
-SERPER_API_KEY      = _get_config("SERPER_API_KEY", "")
 TAVILY_API_KEY      = _get_config("TAVILY_API_KEY", "")
+SERPER_API_KEY      = _get_config("SERPER_API_KEY", "")
 
 # ═══════════════════════════════════════════════════════════
 # 데이터 경로
@@ -68,10 +68,17 @@ BIZ_AREA_CSV = _get_config(
     "BIZ_AREA_CSV",
     (DATA_DIR / "biz_area_addmetrics.csv").as_posix()
 )
-ADMIN_DONG_CSV = _get_config(
-    "ADMIN_DONG_CSV",
-    (DATA_DIR / "admin_dong.csv").as_posix()
+
+# ═══════════════════════════════════════════════════════════
+# DuckDB 설정 
+# ═══════════════════════════════════════════════════════════
+DUCKDB_PATH = _get_config(
+    "DUCKDB_PATH",
+    (DATA_DIR / "data.duckdb").as_posix()
 )
+
+# DuckDB 사용 여부 토글 (True: DuckDB, False: CSV)
+USE_DUCKDB = get_bool("USE_DUCKDB", True) 
 
 # ═══════════════════════════════════════════════════════════
 # 검색 파라미터 (타임아웃/TopK/신선도)

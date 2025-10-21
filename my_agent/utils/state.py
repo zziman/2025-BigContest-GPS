@@ -29,7 +29,6 @@ class GraphState(TypedDict):
     # ─── 데이터 ───
     store_data: Optional[Dict[str, Any]]      # 가맹점 데이터
     bizarea_data: Optional[Dict[str, Any]]    # 상권 데이터
-    region_data: Optional[Dict[str, Any]]     # 행정동 데이터
 
     # ─── 웹 검색 데이터 ─── 
     web_snippets: Optional[List[Dict[str, Any]]]  # title/url/snippet 리스트
