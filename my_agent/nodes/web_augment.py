@@ -37,9 +37,8 @@ def _build_query(state: Dict[str, Any]) -> str:
 class WebAugmentNode:
     """ 웹 검색 보강 노드 - GENERAL/SNS/ISSUE 자동 적용 """
 
-    def __init__(self, default_topk=5, recency_days=90, intents=("GENERAL", "SNS", "ISSUE")):
+    def __init__(self, default_topk=5,  intents=("GENERAL", "SNS", "ISSUE")):
         self.default_topk = default_topk
-        self.recency_days = recency_days
         self.intents = set(intents)
 
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
