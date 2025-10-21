@@ -15,7 +15,7 @@ from my_agent.utils.state import GraphState
 
 
 # 히스토리 저장 경로
-HISTORY_DIR = Path("chat_histroy")
+HISTORY_DIR = Path("chat_history")
 HISTORY_DIR.mkdir(exist_ok=True)
 
 
