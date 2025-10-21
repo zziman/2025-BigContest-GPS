@@ -54,9 +54,8 @@ class WebAugmentNode:
             "web_search",
             query=query,
             top_k=self.default_topk,
-            recency_days=self.recency_days,
-            rewrite_query=True,  # 질의 재구성 자동 적용
-            rerank="cosine"
+            rewrite_query=False,  # 질의 재구성 자동 적용 X
+            debug=False
         )
 
         # 실패 시 무시하고 진행
