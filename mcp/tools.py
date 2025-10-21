@@ -312,9 +312,6 @@ def load_bizarea_data(store_row: Dict[str, Any], all_matches: bool = False) -> D
 
     if all_matches:
         return {"success": True, "data": _to_serializable_records(hit), "error": None}
-    else:
-        return {"success": True, "data": _to_serializable_row(hit.iloc[0]), "error": None}
-
 
 def load_region_data(store_row: Dict[str, Any], all_matches: bool = False) -> Dict[str, Any]:
     """
