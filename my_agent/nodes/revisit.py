@@ -2,10 +2,11 @@
 
 # -*- coding: utf-8 -*-
 """
-RevisitNode - 재방문 유도 전략 노드
+RevisitNode - 재방문 유도 전략 노드 (멀티턴 대화 지원)
 - 항상 resolve_store 실행 (store 탐지는 자동 시도)
 - store 없으면 fallback 답변
 - store 있으면 revisit 포함 분석
+- 후처리(postprocess_response)로 텍스트 정제 + 웹 출처 토글 추가
 """
 
 from typing import Dict, Any
@@ -17,6 +18,9 @@ from my_agent.utils.tools import resolve_store, load_store_and_area_data
 from my_agent.metrics.main_metrics import build_main_metrics
 from my_agent.metrics.strategy_metrics import build_strategy_metrics
 from my_agent.metrics.revisit_metrics import build_revisit_metrics
+
+# ✅ 후처리 유틸 추가
+from my_agent.utils.postprocess import postprocess_response, format_web_snippets
 
 
 class RevisitNode:
@@ -86,6 +90,11 @@ class RevisitNode:
         state["metrics"] = metrics if metrics else None
         state["errors"] = errors if errors else None  # 디버깅 편의
 
+        # ✅ 웹 참고 정보 섹션 (보기 좋게 포맷)
+        web_section = ""
+        if web_snippets:
+            web_section = f"\n### 웹 참고 정보\n{format_web_snippets(web_snippets)}\n"
+
         # 3) Prompt
         prompt = f"""
 당신은 데이터 기반 재방문 전략을 설계하는 전문가 전략가입니다. 
@@ -100,8 +109,7 @@ class RevisitNode:
 ### 데이터 지표
 {state.get("metrics")}
 
-### 웹 참고 정보
-{web_snippets}
+{web_section}
 
 ### 답변 규칙
 - 분석 → 근거 → 전략 → 기대효과 순으로 답변
@@ -119,8 +127,16 @@ class RevisitNode:
         """
 
         # 4) LLM 호출
-        response = self.llm.invoke(prompt).content
-        state["final_response"] = response
+        raw_response = self.llm.invoke(prompt).content
+
+        # 5) ✅ 후처리 적용: 텍스트 정제 + 웹 출처 토글(있을 때만)
+        final_output = postprocess_response(
+            raw_response=raw_response,
+            web_snippets=web_snippets
+        )
+
+        # 6) 상태 저장
+        state["final_response"] = final_output
         state["error"] = None
         state["need_clarify"] = False
         return state
