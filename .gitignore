@@ -12,3 +12,9 @@ venv/
 .vscode/
 .streamlit/
 .env
+
+# Ignore large data and DB files
+data/*.duckdb
+data/*.csv
+*.db
+
