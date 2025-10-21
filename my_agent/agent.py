@@ -24,7 +24,7 @@ def create_graph():
     workflow.add_node("router", RouterNode())
     workflow.add_node(
         "web_augment",
-        WebAugmentNode(default_topk=DEFAULT_TOPK, recency_days=DEFAULT_RECENCY_DAYS)
+        WebAugmentNode(default_topk=DEFAULT_TOPK)
     )
     workflow.add_node("general", GeneralNode())
     workflow.add_node("issue", IssueNode())
