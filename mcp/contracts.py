@@ -60,26 +60,25 @@ class LoadRegionDataOutput(TypedDict):
 class WebSearchInput(TypedDict, total=False):
     query: str
     top_k: int
-    recency_days: int
-    deep_search: bool
     rewrite_query: bool
-    rerank: Literal["cosine", "sbert", "cross"]
     debug: bool
-
+    
 class WebDoc(TypedDict, total=False):
     title: str
     url: str
     snippet: str
-    source: str          # domain
-    published_at: str    # ISO8601 or ""
-    score: float         # 정규화 가중치
-
+    raw_content: str
+    source: str
+    published_at: str
+    
 class WebSearchOutput(TypedDict):
     success: bool
     provider_used: str
     count: int
     docs: List[WebDoc]
-    error: Optional[str]
+    query: str
+    query_used: str
+    meta: dict
 
 
 def validate_merchant_search_input(data: dict) -> Tuple[bool, Optional[str]]:
@@ -98,14 +97,16 @@ def validate_web_search_input(data: dict) -> Tuple[bool, Optional[str]]:
     q = data.get("query")
     if not isinstance(q, str) or not q.strip():
         return False, "query must be non-empty string"
+
     top_k = int(data.get("top_k", 5))
-    if not (1 <= top_k <= 25):
-        return False, "top_k must be 1~25"
-    recency_days = int(data.get("recency_days", 60))
-    if recency_days < 0:
-        return False, "recency_days must be >= 0"
-    rerank = data.get("rerank", "cosine")
-    if rerank not in {"cosine", "sbert", "cross"}:
-        return False, "rerank must be one of: cosine/sbert/cross"
+    if not (1 <= top_k <= 20):
+        return False, "top_k must be between 1 and 20"
+
+    if "rewrite_query" in data and not isinstance(data["rewrite_query"], bool):
+        return False, "rewrite_query must be boolean"
+
+    if "debug" in data and not isinstance(data["debug"], bool):
+        return False, "debug must be boolean"
+
     return True, None
 
