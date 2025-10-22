@@ -30,43 +30,58 @@ class CooperationNode:
         user_query = state.get("user_query", "").strip()
         web_snippets = state.get("web_snippets", [])
 
-        # 1. 가맹점 식별 (없으면 resolve_store 실행)
+        # 1. 항상 store 탐지 시도
         if not state.get("store_id"):
             state = resolve_store(state)
-        if not state.get("store_id"):
-            state["error"] = "가맹점을 인식할 수 없습니다."
-            state["need_clarify"] = True
-            return state
-
+            
         store_id = state["store_id"]
 
+        metrics: Dict[str, Any] = {}
+        errors: Dict[str, str] = {}
+
         # 2. 가맹점 및 상권 데이터 로드
-        state = load_store_and_area_data(state, latest_only=True)
-        store_data = state.get("store_data", {})
-        bizarea_data = state.get("bizarea_data", {})
+        if store_id:
+            try:
+                state = load_store_and_area_data(state, latest_only=True)
+            except Exception as e:
+                errors["load_store_and_area_data"] = str(e)
 
-        if not store_data or not bizarea_data:
-            state["error"] = "가맹점 또는 상권 데이터 조회 실패"
-            return state
+            ## 메인 지표
+            try:
+                res_main = build_main_metrics(store_id)  # {"main_metrics": {...}, "상권_단위_정보": {...}} 권장
+                if isinstance(res_main, dict):
+                    if res_main.get("main_metrics"):
+                        metrics["main_metrics"] = res_main["main_metrics"]
+                    if res_main.get("상권_단위_정보"):
+                        metrics["상권_단위_정보"] = res_main["상권_단위_정보"]
+            except Exception as e:
+                errors["build_main_metrics"] = str(e)
 
-        # 3. 협업 메트릭 계산
-        coop_metrics = {}
-        try:
-            coop_metrics = build_cooperation_metrics(store_id)
-        except Exception as e:
-            state["error"] = f"협업 메트릭 계산 실패: {e}"
-            coop_metrics = {}
+            ## 전략 강도 지표
+            try:
+                res_strategy = build_strategy_metrics(store_id)  # 보통 {"strategy_metrics": {...}}
+                if isinstance(res_strategy, dict) and res_strategy.get("strategy_metrics"):
+                    metrics["strategy_metrics"] = res_strategy["strategy_metrics"]
+                else:
+                    metrics["strategy_metrics"] = res_strategy
+            except Exception as e:
+                errors["build_strategy_metrics"] = str(e)
 
-        # 4. 협업 후보 조회
-        try:
-            result = find_cooperation_candidates_by_store(store_id=store_id, top_k=5)
+            ## 협업 메트릭 계산
+            try:
+                metrics['협업_metrics'] = build_cooperation_metrics(store_id)
+            except Exception as e:
+                state["error"] = f"협업 메트릭 계산 실패: {e}"
 
-        except Exception as e:
-            state["error"] = f"MCP 호출 실패: {e}"
-            result = {"success": False, "candidates": []}
+            # 협업 후보 조회
+            try:
+                result = find_cooperation_candidates_by_store(store_id=store_id, top_k=5)
+            except Exception as e:
+                state["error"] = f"MCP 호출 실패: {e}"
+                result = {"success": False, "candidates": []}
 
         candidates: List[Dict[str, Any]] = result.get("candidates", [])
-        state["metrics"] = {"coop_metrics": coop_metrics, "coop_candidates": candidates}
+        state["metrics"] = metrics if metrics else None
 
         # 5. LLM 프롬프트 구성
         prompt = f"""
@@ -78,11 +93,11 @@ class CooperationNode:
 ## 사용자 질문
 {user_query}
 
-## 기준 가맹점 정보
-{store_data}
+## 가게 정보
+{state.get("user_info")}
 
-## 협업 관련 메트릭
-{coop_metrics}
+## 데이터 지표
+{state.get("metrics")}
 
 ## 협업 후보 점포 (상위 {len(candidates)}개)
 {candidates}
@@ -92,24 +107,24 @@ class CooperationNode:
 
 ---
 
-### 출력 형식
-1. **현재 매장 분석**  
+## 출력 형식
+### 1. **현재 매장 분석**  
    - 고객층 및 상권 특성 요약  
    - 협업이 필요한 이유 (데이터 기반)
-2. **추천 협업 파트너**  
+### 2. **추천 협업 파트너**  
    - 후보 점포 리스트 중 상위 2~3곳을 선택  
    - 각 점포별 협업 포인트 제시  
      - 고객층 겹침 (예: 직장인 중심 / 20~30대 여성 등)  
      - 업종 차이에서 오는 시너지 (예: 카페 ↔ 꽃집, 학원 ↔ 간식가게)
-3. **공동 마케팅 아이디어**  
+### 3. **공동 마케팅 아이디어**  
    - SNS 공동 이벤트 / 쿠폰 교차제공 / 배달 패키지 등  
    - 각 아이디어에 대한 기대효과를 데이터 기반으로 설명
-4. **기대효과 요약**  
+### 4. **기대효과 요약**  
    - 고객 재방문률 상승, 신규 유입률 개선 등
 
 ---
 
-### 작성 규칙
+## 작성 규칙
 1. metrics와 candidates에 기반한 사실만 언급 (추측 금지)
 2. 업종/상권 데이터를 해석적으로 요약
 3. 불필요한 일반론 금지

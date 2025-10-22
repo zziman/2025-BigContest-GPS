@@ -212,7 +212,7 @@ def build_kpi_figs(row_now, dfm, peers):
         prevp = as_pct(prev) if pd.notna(prev) else np.nan
         ps = as_pct_series(pd.to_numeric(peer_s, errors="coerce")) if peer_s is not None else None
         pctl = pct_rank(ps, curp) if ps is not None else np.nan
-        upper = f"동일업종·동일상권 대비 상위 {100 - pctl:.0f}% 위치" if pd.notna(pctl) else ""
+        upper = f"동일 상권·업종 대비 상위 {100 - pctl:.0f}% 위치" if pd.notna(pctl) else ""
 
         show_delta = pd.notna(prevp) and pd.notna(curp)
         # 색상
@@ -252,7 +252,7 @@ def build_kpi_figs(row_now, dfm, peers):
 
     kpis = []
     if pd.notna(cur_repeat):
-        kpis.append(indicator_card("재방문율", "다시 찾아오는 고객 비중(단골 비중)",
+        kpis.append(indicator_card("재방문율", "단골 비중",
                                    cur_repeat, prev_row.get("단골손님_비중", np.nan),
                                    peer_series("단골손님_비중"), "%"))
     if pd.notna(cur_delivery):
@@ -361,7 +361,7 @@ def build_radar_and_minibars(row_now, peers):
         # hover 텍스트는 줄바꿈 없는 풀 라벨로
         plain = label.replace("<br>", " ")
         hover_store.append(f"{plain}<br>매장: {store_raw:.1f}%")
-        hover_peer.append(f"{plain}<br>동일업종·동일상권 평균: {peer_mean:.1f}%")
+        hover_peer.append(f"{plain}<br>동일 상권·업종 평균: {peer_mean:.1f}%")
 
     radar_fig = go.Figure()
     if labels:
@@ -372,7 +372,7 @@ def build_radar_and_minibars(row_now, peers):
             hovertext=hover_store, hoverinfo='text'
         ))
         radar_fig.add_trace(go.Scatterpolar(
-            r=r_peer_vals, theta=labels, name='동일업종·동일상권 평균',
+            r=r_peer_vals, theta=labels, name='동일 상권·업종 평균',
             line=dict(color=THEME_LIGHT, width=2),
             fill='toself', fillcolor="rgba(217,204,255,0.25)",
             hovertext=hover_peer, hoverinfo='text'
