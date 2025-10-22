@@ -57,6 +57,21 @@ class LoadRegionDataOutput(TypedDict):
     data: Optional[dict]
     error: Optional[str]
 
+
+class CooperationCandidatesInput(TypedDict):
+    area_geo: str
+    industry: str
+    main_customers: List[str]
+    limit: Optional[int]
+
+
+class CooperationCandidatesOutput(TypedDict):
+    success: bool
+    count: int
+    candidates: List[dict]
+    error: Optional[str]
+
+
 class WebSearchInput(TypedDict, total=False):
     query: str
     top_k: int
@@ -79,6 +94,18 @@ class WebSearchOutput(TypedDict):
     query: str
     query_used: str
     meta: dict
+
+
+class WeatherForecastInput(TypedDict):
+    lat: float
+    lon: float
+    days: int
+
+class WeatherForecastOutput(TypedDict):
+    success: bool
+    count: int
+    data: list
+    message: str
 
 
 def validate_merchant_search_input(data: dict) -> Tuple[bool, Optional[str]]:

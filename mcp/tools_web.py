@@ -142,11 +142,7 @@ def web_search(query: str,
         if debug:
             print(f"[rewrite] '{original_query}' → '{used_query}'")
     else:
-        # 자동으로 "마케팅 전략" 추가
-        if "마케팅 전략" not in original_query:
-            used_query = f"{original_query.strip()} 마케팅 전략"
-        if debug:
-            print(f"[append 전략] '{original_query}' → '{used_query}'")
+        used_query = original_query
     t_rewrite = time.time() - t_rewrite_start
 
     # Serper 검색

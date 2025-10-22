@@ -404,3 +404,74 @@ def load_store_and_area_data(state: GraphState, include_region: bool = False, la
         del state["region_data"]
 
     return state
+
+
+def find_cooperation_candidates_by_store(store_id: str, top_k: int = 5):
+    """
+    MCP 래퍼: store_id만 받아서 내부적으로 협업 후보 조회
+    - 내부에서 load_store_data, load_bizarea_data 호출
+    - 실제 DuckDB 쿼리는 mcp/tools.py의 find_cooperation_candidates 실행
+    """
+    print(f"[DEBUG] find_cooperation_candidates_by_store called (store_id={store_id}, top_k={top_k})")
+
+    # 1. 가맹점 기본 데이터 조회
+    store_res = call_mcp_tool("load_store_data", store_id=store_id, latest_only=True)
+    if not store_res.get("success"):
+        return {"success": False, "count": 0, "candidates": [], "error": f"store not found ({store_id})"}
+
+    store = store_res["data"]
+    area_geo = store.get("상권_지리")
+    industry = store.get("업종")
+    main_customers = [
+        x for x in [
+            store.get("핵심고객_1순위"),
+            store.get("핵심고객_2순위"),
+            store.get("핵심고객_3순위"),
+        ] if x
+    ]
+
+    if not area_geo or not industry or not main_customers:
+        return {
+            "success": False,
+            "count": 0,
+            "candidates": [],
+            "error": f"필수 데이터 누락 (area_geo={area_geo}, industry={industry}, main_customers={main_customers})",
+        }
+
+    # 2. 실제 협업 후보 조회 (mcp/tools.py의 find_cooperation_candidates 호출)
+    result = call_mcp_tool(
+        "find_cooperation_candidates",
+        area_geo=area_geo,
+        industry=industry,
+        main_customers=main_customers,
+        limit=top_k,
+    )
+    print(f"[DEBUG] MCP result from find_cooperation_candidates: {result}")
+    return result
+
+
+
+def get_weather_forecast_data(lat: float, lon: float, days: int = 3) -> Dict[str, Any]:
+    """
+    MCP weather_forecast 툴 호출 래퍼
+    - 입력: 위도(lat), 경도(lon), 조회 일수(days)
+    - 출력: 기상청 단기예보 (기온/강수 형태 포함)
+    """
+    print(f"[DEBUG] get_weather_forecast_data 호출 (lat={lat}, lon={lon}, days={days})")
+
+    try:
+        result = call_mcp_tool("get_weather_forecast", lat=lat, lon=lon, days=days)
+
+        if not result.get("success"):
+            print(f"[ERROR] 날씨 데이터 조회 실패: {result.get('message')}")
+            return {
+                "success": False,
+                "data": [],
+                "message": result.get("message", "날씨 데이터 조회 실패"),
+            }
+
+        return result
+
+    except Exception as e:
+        print(f"[EXCEPTION] get_weather_forecast_data 오류: {e}")
+        return {"success": False, "data": [], "message": str(e)}

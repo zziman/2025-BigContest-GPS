@@ -56,6 +56,7 @@ NAVER_CLIENT_ID     = _get_config("NAVER_CLIENT_ID", "")
 NAVER_CLIENT_SECRET = _get_config("NAVER_CLIENT_SECRET", "")
 TAVILY_API_KEY      = _get_config("TAVILY_API_KEY", "")
 SERPER_API_KEY      = _get_config("SERPER_API_KEY", "")
+WEATHER_API_KEY      = _get_config("WEATHER_API_KEY", "")
 
 # ═══════════════════════════════════════════════════════════
 # 데이터 경로

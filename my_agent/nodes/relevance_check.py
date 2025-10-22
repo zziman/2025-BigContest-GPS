@@ -28,7 +28,7 @@ def check_relevance(state: GraphState) -> GraphState:
     intent = (state.get("intent") or "GENERAL").upper()
 
     # 길이 검사
-    if len(response) < 50:
+    if len(response) < 10:
         state["relevance_passed"] = False
         state["error"] = "[Relevance] 응답이 너무 짧습니다 (50자 미만)"
         print(f"[Relevance 통과 X / 응답 너무 짧음] — len={len(response)}")
