@@ -15,7 +15,9 @@ from my_agent.utils.config import GOOGLE_API_KEY, LLM_MODEL, LLM_TEMPERATURE
 from my_agent.utils.tools import resolve_store, load_store_and_area_data
 
 from my_agent.metrics.main_metrics import build_main_metrics
+from my_agent.metrics.strategy_metrics import build_strategy_metrics
 from my_agent.metrics.issue_metrics import build_issue_metrics
+
 from my_agent.utils.postprocess import postprocess_response, format_web_snippets
 
 
@@ -39,18 +41,42 @@ class IssueNode:
         # 2. store 있는 경우에만 metrics 생성
         metrics: Dict[str, Any] = {}
         if store_id:
+            # 가게/상권 데이터 적재 (최신행만)
             try:
-                m_main = build_main_metrics(store_id)
-                metrics["main_metrics"] = m_main.get("main_metrics", {})
-            except Exception:
-                pass
+                state = load_store_and_area_data(state, include_region=False, latest_only=True)
+            except Exception as e:
+                errors["load_store_and_area_data"] = str(e)
+
+            # 2-1) 메인 지표
+            try:
+                res_main = build_main_metrics(store_id)  # {"main_metrics": {...}, "상권_단위_정보": {...}} 권장
+                if isinstance(res_main, dict):
+                    if res_main.get("main_metrics"):
+                        metrics["main_metrics"] = res_main["main_metrics"]
+                    if res_main.get("상권_단위_정보"):
+                        metrics["상권_단위_정보"] = res_main["상권_단위_정보"]
+            except Exception as e:
+                errors["build_main_metrics"] = str(e)
+
+            # 2-2) 전략 강도 지표
+            try:
+                res_strategy = build_strategy_metrics(store_id)  # 보통 {"strategy_metrics": {...}}
+                if isinstance(res_strategy, dict) and res_strategy.get("strategy_metrics"):
+                    metrics["strategy_metrics"] = res_strategy["strategy_metrics"]
+                else:
+                    # 함수가 바로 dict를 반환하는 구현일 수도 있음
+                    metrics["strategy_metrics"] = res_strategy
+            except Exception as e:
+                errors["build_strategy_metrics"] = str(e)
 
             try:
                 m_issue = build_issue_metrics(store_id)
                 metrics["issue_metrics"] = m_issue.get("issue_metrics", {})
                 metrics["abnormal_metrics"] = m_issue.get("abnormal_metrics", {})
             except Exception:
-                pass
+                errors["issue_metrics"] = str(e)
+                errors["abnormal_metrics"] = str(e)
+
 
         state["metrics"] = metrics if metrics else None
 
@@ -135,6 +161,7 @@ if __name__ == "__main__":
 
     if not query:
         print("❗ 사용법: python -m my_agent.nodes.issue --query '질문' [--store STORE_ID]")
+        # 예) python -m my_agent.nodes.issue --query "문제점과 이를 해결할 수 있는 마케팅 전략을 알려줘" --store 761947ABD9
         sys.exit(1)
 
     state = {"user_query": query}

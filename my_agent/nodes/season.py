@@ -31,31 +31,47 @@ class SeasonNode:
         # store_id 확인 및 로드
         if not state.get("store_id"):
             state = resolve_store(state)
+
         store_id = state.get("store_id")
 
-        if not store_id:
-            state["error"] = "store_id를 찾을 수 없습니다."
-            return state
+        metrics: Dict[str, Any] = {}
+        errors: Dict[str, str] = {}
 
-        try:
-            m_main = build_main_metrics(store_id)
-            metrics["main_metrics"] = m_main.get("main_metrics", {})
-        except Exception as e:
-            print(f"[WARN] main_metrics 생성 실패: {e}")
+        if store_id:
+            try:
+                state = load_store_and_area_data(state, include_region=False, latest_only=True)
+            except Exception as e:
+                errors["load_store_and_area_data"] = str(e)
 
-        try:
-            m_strategy = build_strategy_metrics(store_id)
-            metrics["strategy_metrics"] = m_strategy.get("strategy_metrics", {})
-        except Exception as e:
-            print(f"[WARN] strategy_metrics 생성 실패: {e}")
+            # 메인 지표
+            try:
+                res_main = build_main_metrics(store_id)  # {"main_metrics": {...}, "상권_단위_정보": {...}} 권장
+                if isinstance(res_main, dict):
+                    if res_main.get("main_metrics"):
+                        metrics["main_metrics"] = res_main["main_metrics"]
+                    if res_main.get("상권_단위_정보"):
+                        metrics["상권_단위_정보"] = res_main["상권_단위_정보"]
+            except Exception as e:
+                errors["build_main_metrics"] = str(e)
+
+            # 전략 강도 지표
+            try:
+                res_strategy = build_strategy_metrics(store_id)  # 보통 {"strategy_metrics": {...}}
+                if isinstance(res_strategy, dict) and res_strategy.get("strategy_metrics"):
+                    metrics["strategy_metrics"] = res_strategy["strategy_metrics"]
+                else:
+                    # 함수가 바로 dict를 반환하는 구현일 수도 있음
+                    metrics["strategy_metrics"] = res_strategy
+            except Exception as e:
+                errors["build_strategy_metrics"] = str(e)
             
-        # season metrics 생성
-        try:
-            m_season = build_season_metrics(store_id)
-            metrics = {"season_metrics": m_season.get("season_metrics", {})}
-        except Exception as e:
-            metrics = {}
-            state["error"] = f"season_metrics 생성 실패: {e}"
+            # season metrics 생성
+            try:
+                m_season = build_season_metrics(store_id)
+                metrics = {"season_metrics": m_season.get("season_metrics", {})}
+            except Exception as e:
+                metrics = {}
+                state["error"] = f"season_metrics 생성 실패: {e}"
 
         state["metrics"] = metrics if metrics else None
 
@@ -111,7 +127,7 @@ class SeasonNode:
 
         # LLM 호출
         raw_response = self.llm.invoke(prompt).content
-        final_response = postprocess_response(raw_response, web_snippets)
+        final_response = postprocess_response(raw_response, web_snippets = web_snippets)
 
         state["final_response"] = final_response
         state["error"] = None

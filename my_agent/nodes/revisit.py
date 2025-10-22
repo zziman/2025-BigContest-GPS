@@ -80,8 +80,7 @@ class RevisitNode:
                         metrics["revisit_metrics"] = res_revisit["revisit_metrics"]
                     if res_revisit.get("abnormal_metrics"):
                         metrics["revisit_abnormal"] = res_revisit["abnormal_metrics"]
-                    if res_revisit.get("yyyymm"):
-                        metrics["yyyymm"] = res_revisit["yyyymm"]
+                        
             except Exception as e:
                 errors["build_revisit_metrics"] = str(e)
 
