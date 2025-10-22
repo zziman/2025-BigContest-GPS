@@ -5,6 +5,15 @@ Streamlit UI (Home: Dashboard, Chatbot separated in sidebar menu)
 - Home: 가맹점명 입력 → 선택된 가맹점 대시보드
 - Chatbot: 가맹점 정보와 무관하게 독립 실행 + 새 대화 초기화
 """
+# ===== Windows 호환성 패치 (가장 먼저 실행) =====
+import pathlib
+import platform
+
+# Windows에서 PosixPath 호환성 패치
+if platform.system() == 'Windows':
+    temp = pathlib.PosixPath
+    pathlib.PosixPath = pathlib.WindowsPath
+
 
 import os
 from pathlib import Path
@@ -244,6 +253,7 @@ def reset_clarify_state():
     st.session_state.clarify_selected_idx = 0
     st.session_state.last_web_snippets = None
     st.session_state.last_web_meta = None
+    st.session_state.processing = False  # 추가
 
 def predict_next_month_sales(store_id: str, predictor, label_encoder, df_preprocessed):
     """다음 달 매출 구간 예측"""
@@ -251,8 +261,12 @@ def predict_next_month_sales(store_id: str, predictor, label_encoder, df_preproc
         return None
     
     try:
+        # 가맹점 ID 전처리: '___' 이후 부분 제거 (예: '761947ABD9___호남*' -> '761947ABD9')
+        clean_store_id = store_id.split('___')[0] if '___' in store_id else store_id
+        
+        # 타임시리즈 데이터는 가맹점구분번호(언더바 없음)를 사용
         store_col = None
-        possible_names = ["가맹점_구분번호", "가맹점구분번호", "MCT_KEY", "store_id"]
+        possible_names = ["가맹점구분번호", "가맹점_구분번호", "MCT_KEY", "store_id"]
         
         for col_name in possible_names:
             if col_name in df_preprocessed.columns:
@@ -260,23 +274,32 @@ def predict_next_month_sales(store_id: str, predictor, label_encoder, df_preproc
                 break
         
         if not store_col:
+            st.error(f"❌ 데이터 컬럼명 오류: 가맹점 ID 컬럼을 찾을 수 없습니다.")
+            st.write(f"사용 가능한 컬럼: {list(df_preprocessed.columns[:10])}...")
             return None
         
+        # label_encoder로 원본 ID를 숫자로 변환
         try:
-            encoded_store_id = label_encoder.transform([store_id])[0]
+            encoded_store_id = label_encoder.transform([clean_store_id])[0]
         except ValueError:
+            # label_encoder에 없는 경우
+            st.warning(f"⚠️ 가맹점 ID `{clean_store_id}`가 학습 데이터에 없습니다.")
             return None
 
+        # 인코딩된 ID로 데이터 필터링
         store_df = df_preprocessed[df_preprocessed[store_col] == encoded_store_id].sort_values("기준년월")
         
         if store_df.empty:
+            st.warning(f"⚠️ 인코딩된 ID `{encoded_store_id}`에 해당하는 데이터가 없습니다.")
             return None
-
+        
         latest_row = store_df.iloc[-1:].copy()
         
-        drop_cols = ['매출금액_구간', '매핑용_상권명', '매핑용_업종', '기준년월']
+        # 예측에 불필요한 컬럼 제거
+        drop_cols = ['매출금액_구간', '매핑용_상권명', '매핑용_업종', '기준년월', 'dt']
         latest_row = latest_row.drop(columns=drop_cols, errors='ignore')
 
+        # 예측 수행
         pred_class = predictor.predict(latest_row).iloc[0]
         pred_proba_df = predictor.predict_proba(latest_row).iloc[0]
 
@@ -289,7 +312,10 @@ def predict_next_month_sales(store_id: str, predictor, label_encoder, df_preproc
             "predicted_probability": pred_prob
         }
 
-    except Exception:
+    except Exception as e:
+        st.error(f"❌ 예측 중 오류 발생: {str(e)}")
+        import traceback
+        st.write(f"상세 오류: {traceback.format_exc()}")
         return None
 
 # ─────────────────────────────────────────
@@ -341,41 +367,61 @@ if st.session_state.current_page == "Home":
         # 데이터 로드
         fr, bz = dash.load_all_data(FRANCHISE_CSV, BIZ_AREA_CSV)
 
-        # 검색어 입력
-        name_col = "가맹점명" if "가맹점명" in fr.columns else None
-        c1, _ = st.columns([3, 1])
-        with c1:
-            query = st.text_input("가맹점명 검색", placeholder="예: 본죽, 동대, 원조...", label_visibility="visible").strip()
-
-        # 옵션 구성
+        # 가맹점 구분코드 직접 입력
         if "MCT_KEY" not in fr.columns:
             raise KeyError("dashboard.load_all_data() 결과에 MCT_KEY 컬럼이 없습니다.")
+        
+        # 사용 가능한 가맹점 ID 목록 (MCT_KEY는 가맹점_구분번호와 동일)
+        available_store_ids = fr["MCT_KEY"].dropna().unique().tolist()
+        
+        # 샘플 ID 생성 (처음 4개)
+        sample_ids = ", ".join(available_store_ids[:4]) if len(available_store_ids) >= 4 else ", ".join(available_store_ids[:2])
+        
+        # 입력 박스
+        # 입력값 검증 안내 (입력박스보다 먼저 표시)
+        if "store_id_input_home" not in st.session_state or not st.session_state["store_id_input_home"].strip():
+            st.info(f"🔍 (가맹점구분코드__가맹점명)을 입력해주세요. (총 {len(available_store_ids)}개 가맹점)")
 
-        df_opt = fr[["MCT_KEY", name_col]].drop_duplicates() if name_col else fr[["MCT_KEY"]].drop_duplicates()
-        if query and name_col:
-            df_opt = df_opt[df_opt[name_col].astype(str).str.contains(query, case=False, na=False)]
+            # 샘플 ID 더 보여주기
+            with st.expander("💡 사용 가능한 가맹점 코드 예시 (처음 20개)"):
+                cols = st.columns(4)
+                for i, sid in enumerate(available_store_ids[:20]):
+                    cols[i % 4].code(sid)
 
-        if name_col:
-            store_opts_df = df_opt.assign(
-                label=lambda d: d[name_col] + " (" + d["MCT_KEY"].astype(str) + ")",
-                value=lambda d: d["MCT_KEY"].astype(str),
-            )
-        else:
-            store_opts_df = df_opt.assign(label=lambda d: d["MCT_KEY"], value=lambda d: d["MCT_KEY"])
+        # 입력 박스
+        store_id_input = st.text_input(
+            "가맹점 검색",
+            placeholder=f"예: {sample_ids}...",
+            label_visibility="visible",
+            key="store_id_input_home",
+            help=f"사용 가능한 가맹점 총 {len(available_store_ids)}개"
+        ).strip()
 
-        store_opts = store_opts_df[["label", "value"]].to_dict("records")
-        if not store_opts:
-            st.info("검색 결과가 없습니다. 다른 키워드를 입력해 보세요.")
+        # 입력값 검증 후 처리
+        if not store_id_input:
             st.stop()
 
-        # 선택 박스
-        store_id = st.selectbox(
-            "가맹점 선택",
-            options=store_opts,
-            index=0,
-            format_func=lambda x: x["label"],
-            key="store_picker_home",
-        )["value"]
+        
+        # 대시보드용 store_id (MCT_KEY에서 확인)
+        if store_id_input not in available_store_ids:
+            st.warning(f"⚠️ 입력하신 가맹점 구분코드 `{store_id_input}`를 찾을 수 없습니다.")
+            
+            # 유사한 ID 찾기
+            similar = [sid for sid in available_store_ids if store_id_input[:5] in str(sid)][:5]
+            if similar:
+                st.info("유사한 코드:")
+                for sid in similar:
+                    st.code(sid)
+            else:
+                st.info("💡 올바른 코드를 입력하거나 아래에서 확인해주세요.")
+                with st.expander("사용 가능한 가맹점 코드 예시 (처음 20개)"):
+                    cols = st.columns(4)
+                    for i, sid in enumerate(available_store_ids[:20]):
+                        cols[i % 4].code(sid)
+            
+            st.stop()
+        
+        store_id = store_id_input
 
         # 컨텍스트 계산 (행정동 데이터 None)
         dfm, row_now, peers, tr_row, _ = dash.compute_context(fr, bz, None, store_id)
@@ -402,11 +448,8 @@ if st.session_state.current_page == "Home":
         df_preprocessed = load_preprocessed_data()
         
         if predictor and label_encoder and df_preprocessed is not None:
-            available_ids = label_encoder.classes_
-            
-            if store_id not in available_ids:
-                st.warning(f"⚠️ 선택된 가맹점({store_id})은 타임시리즈 학습 데이터에 포함되지 않았습니다.")
-            else:
+            # 예측 시도
+            try:
                 with st.spinner("🔍 다음 달 매출을 예측하는 중..."):
                     import time
                     start_time = time.time()
@@ -450,6 +493,8 @@ if st.session_state.current_page == "Home":
                     """)
                 else:
                     st.warning("⚠️ 해당 가맹점의 AI 예측을 수행할 수 없습니다.")
+            except Exception as e:
+                st.error(f"❌ 예측 실패: {str(e)}")
 
         st.markdown("---")
 
@@ -503,13 +548,36 @@ if st.session_state.current_page == "Home":
 # Chatbot 페이지
 # ─────────────────────────────────────────
 else:
+    # 보라색 버튼을 위한 CSS 추가
+    st.markdown("""
+        <style>
+        div.stButton > button[kind="primary"] {
+            background-color: #7c3aed !important;
+            border-color: #7c3aed !important;
+        }
+        div.stButton > button[kind="primary"]:hover {
+            background-color: #6d28d9 !important;
+            border-color: #6d28d9 !important;
+        }
+        div.stButton > button[kind="primary"]:active {
+            background-color: #5b21b6 !important;
+            border-color: #5b21b6 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
     colL, colR = st.columns([6, 2])
     with colL:
         st.markdown("### 🤖 Chatbot · 비밀상담")
     with colR:
         st.button("🧹 새 대화 시작", use_container_width=True, on_click=clear_chat_history)
 
-    # Clarify UI
+    # 기존 대화 렌더 (먼저 렌더링)
+    for i, m in enumerate(st.session_state.messages):
+        role = "user" if isinstance(m, HumanMessage) else "assistant"
+        render_chat_message(role, m.content, i)
+
+    # Clarify UI (대화 렌더 후에 표시)
     if st.session_state.get("pending_clarify"):
         st.markdown("---")
         st.info("🔍 후보가 여러 개입니다. 지점을 선택해주세요.")
@@ -545,7 +613,7 @@ else:
             import time
             start_time = time.time()
 
-            with st.spinner("🔍 선택하신 지점을 분석 중..."):
+            with st.spinner("🔍 당신의 나침반이 올바른 방향을 찾고 있어요..."):
                 from my_agent.utils.adapters import run_one_turn_with_store
                 
                 re = run_one_turn_with_store(
@@ -573,65 +641,65 @@ else:
             st.rerun()
         st.markdown("---")
 
-    # 기존 대화 렌더
-    for i, m in enumerate(st.session_state.messages):
-        role = "user" if isinstance(m, HumanMessage) else "assistant"
-        render_chat_message(role, m.content, i)
-
-    # 웹 출처
-    if (st.session_state.messages and isinstance(st.session_state.messages[-1], AIMessage)
-        and st.session_state.get("last_web_snippets")):
-        render_sources(
-            st.session_state.last_web_snippets,
-            st.session_state.get("last_web_meta"),
-            limit=3
-        )
 
     # 입력 처리
     if st.session_state.get("pending_clarify"):
         st.text_input("메시지 입력", placeholder="위에서 지점을 먼저 선택해주세요", disabled=True, key="disabled_input")
     else:
         if query := st.chat_input(CHAT_PLACEHOLDER):
+            # 사용자 메시지를 먼저 추가
             st.session_state.messages.append(HumanMessage(content=query))
+            
+            # 처리 전에 즉시 화면 갱신하여 사용자 입력을 보여줌
+            st.rerun()
 
-            import time
-            start_time = time.time()
+    # pending_clarify가 아니고, 마지막 메시지가 사용자 메시지이며, 아직 처리되지 않은 경우
+    if (not st.session_state.get("pending_clarify") and 
+        st.session_state.messages and 
+        isinstance(st.session_state.messages[-1], HumanMessage) and
+        not st.session_state.get("processing")):
+        
+        st.session_state.processing = True
+        last_query = st.session_state.messages[-1].content
 
-            with st.spinner("🔍 분석 중..."):
-                try:
-                    result = run_one_turn(
-                        user_query=query,
-                        thread_id=st.session_state.thread_id,
-                    )
-                except Exception as e:
-                    err = f"⚠️ 처리 중 오류 발생: {e}"
-                    st.session_state.messages.append(AIMessage(content=err))
-                    st.rerun()
+        import time
+        start_time = time.time()
 
-            elapsed_time = time.time() - start_time
-            status = result.get("status", "ok")
-
-            if status == "need_clarify":
-                st.session_state.pending_clarify = True
-                st.session_state.clarify_candidates = result.get("store_candidates", []) or []
-                st.session_state.last_query_for_clarify = query
-
-                reply = result.get("final_response") or "후보가 여러 개입니다. 지점을 선택해주세요."
-                st.session_state.messages.append(AIMessage(content=reply))
+        with st.spinner("🔍 당신의 나침반이 올바른 방향을 찾고 있어요..."):
+            try:
+                result = run_one_turn(
+                    user_query=last_query,
+                    thread_id=st.session_state.thread_id,
+                )
+            except Exception as e:
+                err = f"⚠️ 처리 중 오류 발생: {e}"
+                st.session_state.messages.append(AIMessage(content=err))
+                st.session_state.processing = False
                 st.rerun()
 
-            elif status == "error":
-                err = result.get("error") or "알 수 없는 오류가 발생했습니다."
-                st.session_state.messages.append(AIMessage(content=f"❌ {err}"))
-                st.rerun()
+        elapsed_time = time.time() - start_time
+        status = result.get("status", "ok")
 
-            else:
-                reply = result.get("final_response") or "응답을 생성할 수 없습니다."
-                time_footer = f"\n\n---\n⏱️ 응답 생성 시간: **{elapsed_time:.1f}초**"
-                reply_with_time = reply + time_footer
-                st.session_state.messages.append(AIMessage(content=reply_with_time))
+        if status == "need_clarify":
+            st.session_state.pending_clarify = True
+            st.session_state.clarify_candidates = result.get("store_candidates", []) or []
+            st.session_state.last_query_for_clarify = last_query
 
-                st.session_state.last_web_snippets = result.get("web_snippets") or result.get("state", {}).get("web_snippets")
-                st.session_state.last_web_meta = result.get("web_meta") or result.get("state", {}).get("web_meta")
+            reply = result.get("final_response") or "후보가 여러 개입니다. 지점을 선택해주세요."
+            st.session_state.messages.append(AIMessage(content=reply))
+            st.session_state.processing = False
+            st.rerun()
+
+        elif status == "error":
+            err = result.get("error") or "알 수 없는 오류가 발생했습니다."
+            st.session_state.messages.append(AIMessage(content=f"❌ {err}"))
+            st.session_state.processing = False
+            st.rerun()
+
+        else:
+            reply = result.get("final_response") or "응답을 생성할 수 없습니다."
+            time_footer = f"\n\n---\n⏱️ 응답 생성 시간: **{elapsed_time:.1f}초**"
+            reply_with_time = reply + time_footer
+            st.session_state.messages.append(AIMessage(content=reply_with_time))
 
                 st.rerun()

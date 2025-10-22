@@ -18,7 +18,6 @@ import numpy as np
 from typing import Dict, Any, List
 from my_agent.utils.tools import load_store_and_area_data
 
-
 def _safe(x):
     """결측값 처리 (NaN, None 등) → None"""
     if x is None:
@@ -33,7 +32,6 @@ def _safe(x):
 def _drop_na_metrics(d: Dict[str, Any]) -> Dict[str, Any]:
     """NaN/None 값을 가진 항목은 제외"""
     return {k: v for k, v in d.items() if v is not None and not (isinstance(v, float) and np.isnan(v))}
-
 
 def build_main_metrics(store_num: str) -> Dict[str, Any]:
     """Main 메트릭 생성"""
@@ -94,3 +92,4 @@ if __name__ == "__main__":
     store_id = sys.argv[1]
     result = build_main_metrics(store_id)
     print(json.dumps(result, ensure_ascii=False, indent=2))
+    

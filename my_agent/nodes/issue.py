@@ -16,6 +16,7 @@ from my_agent.utils.tools import resolve_store, load_store_and_area_data
 
 from my_agent.metrics.main_metrics import build_main_metrics
 from my_agent.metrics.issue_metrics import build_issue_metrics
+from my_agent.utils.postprocess import postprocess_response, format_web_snippets
 
 
 class IssueNode:
@@ -25,7 +26,6 @@ class IssueNode:
             google_api_key=GOOGLE_API_KEY,
             temperature=LLM_TEMPERATURE
         )
-
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         user_query = state.get("user_query", "").strip()
         web_snippets = state.get("web_snippets", [])
@@ -56,60 +56,69 @@ class IssueNode:
 
         # 3. Prompt 구성(JSON 구조 그대로 사용)
         prompt = f"""
-당신은 데이터 기반 문제 진단 전문가입니다.
-주어진 지표를 해석하여 현재 매장의 **핵심 문제와 원인**을 분석하세요.
+# 당신은 데이터 기반 문제 진단 전문가입니다  
+주어진 정보를 해석하여 매장의 **핵심 문제와 원인**을 도출하세요.
 
-### 질문
+---
+
+## 질문
 {user_query}
 
-### 매장 정보
+## 가게 정보
 {state.get("user_info")}
 
-### 데이터 지표
+## 데이터 지표
 {state.get("metrics")}
 
-### 웹 참고 데이터
-{web_snippets}
+## 웹 참고 정보
+{format_web_snippets(web_snippets)}
 
 ---
 
-### 출력 형식
-아래 형식을 반드시 유지하여 문제를 분석하세요.
+## 출력 형식
+### 1. 현재 상황 분석
+- 데이터를 바탕으로 현재 매장의 상황을 요약 (2~3문장)
 
-[현재 상황 분석]
-- 매장의 현재 상황을 데이터 기반으로 요약 설명
+### 2. 핵심 문제 요약
+- 매장이 겪고 있는 가장 핵심적인 비즈니스 문제를 한 문장으로 요약
 
-[핵심 문제 요약]
-- 이 매장이 겪고 있는 가장 핵심적인 비즈니스 문제를 한 줄로 콕 집어 표현
+### 3. 이상 지표 분석
+- abnormal_metrics를 활용하여 감지된 이상 지표를 구체적으로 나열
 
-[이상 지표 분석]
-- abnormal_metrics를 활용해 이상 징후를 나열
+### 4. 문제 원인
+- 데이터를 근거로 한 주요 원인 2~4가지 제시
 
-[문제 원인]
-- 데이터와 논리를 근거로 원인을 2~4개 정리
+### 5. 개선 방향
+- 문제 해결을 위한 마케팅 아이디어 제안  
+- 각 아이디어의 **데이터적 근거** 명시  
+- 웹 참고 데이터 활용 가능
 
-[개선 방향]
-- 문제점을 보완할 마케팅 아이디어와 근거를 제시
-- 웹 검색 결과 또한 사용해서 아이디어를 제시
+### 6. 기대 효과
+- 전략 실행 후 기대할 수 있는 변화와 지표 개선 전망
 
 ---
 
-### 작성 규칙
-- 오직 위 JSON 데이터(metrics) 기반으로만 분석
-- **데이터 기반 문장 작성 (임의로 숫자 생성 금지)**
-- 비즈니스적으로 정확하게 설명
-- 너무 일반적인 말 금지
-- 아이디어와 근거를 명확히 제시
-- 참고 출처를 제시
+## 작성 규칙
+1. 오직 위 JSON 데이터(metrics)에 기반하여 분석  
+2. 임의의 수치 생성 금지  
+3. 데이터 근거를 포함한 문장 작성  
+4. 추상적 설명 및 일반론 금지  
+5. 근거와 아이디어를 구체적으로 명시  
+6. 참고 출처 명시 가능
 """
 
         # 4. LLM 호출
-        response = self.llm.invoke(prompt).content
-        state["final_response"] = response
+        raw_response = self.llm.invoke(prompt).content
+
+        final_response = postprocess_response(
+            raw_response=raw_response,
+            web_snippets=web_snippets
+        )
+
+        state["final_response"] = final_response
         state["error"] = None
         state["need_clarify"] = False
         return state
-
 
 if __name__ == "__main__":
     import sys, json

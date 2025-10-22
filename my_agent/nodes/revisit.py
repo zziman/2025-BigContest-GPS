@@ -2,7 +2,7 @@
 
 # -*- coding: utf-8 -*-
 """
-RevisitNode - 재방문 유도 전략 노드
+RevisitNode - 재방문 유도 전략 노드 (멀티턴 대화 지원)
 - 항상 resolve_store 실행 (store 탐지는 자동 시도)
 - store 없으면 fallback 답변
 - store 있으면 revisit 포함 분석
