@@ -112,16 +112,48 @@ BRAND_CSS = """
   --card:#ffffff;
 }
 
-html, body, * { font-family:Pretendard, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-.block-container{ max-width:1120px; }
-main [data-testid="stAppViewContainer"]>.main{ background:var(--surface); }
-[data-testid="stHeader"] { background:transparent; }
-
-section[data-testid="stSidebar"]{
-  background:#fff; border-right:1px solid var(--line);
+html, body, * { 
+  font-family: Pretendard, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; 
 }
-section[data-testid="stSidebar"] .sidebar-content{ padding:14px 12px 22px; }
 
+/* 메인 컨테이너 최대 폭 */
+.block-container{ 
+  max-width:1120px; 
+}
+
+/* 메인 배경 */
+main [data-testid="stAppViewContainer"]>.main{ 
+  background: var(--surface); 
+}
+
+/* 상단 헤더 투명 */
+[data-testid="stHeader"] { 
+  background: transparent; 
+}
+
+/* 사이드바 배경 */
+section[data-testid="stSidebar"]{
+  background: #fff; 
+  border-right: 1px solid var(--line);
+}
+section[data-testid="stSidebar"] .sidebar-content{ 
+  padding:14px 12px 22px; 
+}
+
+/* 사용자 입력 박스 보라색 스타일 */
+.stTextInput>div>input {
+  border: 2px solid var(--brand);
+  border-radius: 12px;
+  padding: 8px 12px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+.stTextInput>div>input:focus {
+  border-color: var(--brand-600);
+  box-shadow: 0 4px 12px rgba(124,58,237,0.25);
+}
+
+/* 라디오 버튼 (후보 매장 선택) */
 div[role="radiogroup"] > label{
   display:flex; align-items:center; gap:10px;
   background:#fff; border:1px solid var(--line)!important;
@@ -130,25 +162,36 @@ div[role="radiogroup"] > label{
   transition:all .15s ease;
 }
 div[role="radiogroup"] > label:hover{
-  border-color:#e0c3ff!important; background:#f8f0ff;
+  border-color: var(--brand)!important; 
+  background:#f8f0ff;
 }
 div[role="radiogroup"] > label[data-checked="true"]{
   color:#fff; background:var(--brand); border-color:transparent!important;
   box-shadow:0 6px 16px rgba(124,58,237,0.22);
 }
 
+/* 카드 UI */
 .ui-card{
   background:var(--card); border:1px solid var(--line); border-radius:18px; padding:18px;
   box-shadow:0 14px 30px rgba(124,58,237,0.08); margin-bottom:16px;
 }
-.ui-card h5{ margin:0 0 10px; letter-spacing:-.2px; font-weight:900; }
+.ui-card h5{ 
+  margin:0 0 10px; letter-spacing:-.2px; font-weight:900; 
+}
 
+/* Plotly 모드바 제거 */
 .js-plotly-plot .modebar{ display:none !important; }
 
-#MainMenu{visibility:hidden} footer {visibility:hidden}
+/* 기본 메뉴 및 푸터 숨김 */
+#MainMenu{visibility:hidden} 
+footer {visibility:hidden}
 
-.stButton>button{ white-space:nowrap; }
+/* 버튼 스타일 */
+.stButton>button{ 
+  white-space:nowrap; 
+}
 
+/* 사용자 채팅 말풍선 */
 .user-bubble{
   margin:8px 0 8px auto; max-width:780px;
   background:#f3e8ff; border:1px solid #e9d5ff;
@@ -157,9 +200,13 @@ div[role="radiogroup"] > label[data-checked="true"]{
   color:#0f172a; font-size:15px; line-height:1.45;
 }
 
-[data-testid="chatAvatarIcon-user"], .stChatMessageAvatar:has([data-testid="chatAvatarIcon-user"]) { display:none !important; }
+/* 사용자 아바타 숨김 */
+[data-testid="chatAvatarIcon-user"], .stChatMessageAvatar:has([data-testid="chatAvatarIcon-user"]) { 
+  display:none !important; 
+}
 </style>
 """
+
 
 st.markdown(BRAND_CSS, unsafe_allow_html=True)
 st.markdown("""
@@ -702,4 +749,8 @@ else:
             reply_with_time = reply + time_footer
             st.session_state.messages.append(AIMessage(content=reply_with_time))
 
-                st.rerun()
+            st.session_state.last_web_snippets = result.get("web_snippets") or result.get("state", {}).get("web_snippets")
+            st.session_state.last_web_meta = result.get("web_meta") or result.get("state", {}).get("web_meta")
+
+            st.session_state.processing = False
+            st.rerun()
