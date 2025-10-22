@@ -40,81 +40,81 @@ def build_issue_metrics(store_num: str) -> Dict[str, Any]:
     # 1. 시계열 이상치
     val = _safe(store.get("신규비중_YoY_pp"))
     add_metric_if(abnormal_metrics, "신규고객_이탈", val, lambda v: v < -22.45,
-                  lambda v: f"신규비중 YoY {v:.1f}pp 감소")
+                  lambda v: f"{v:.1f}pp 감소 (상하위 그룹의 통계적 정상 범위(μ±σ)보다 낮음)")
 
     val = _safe(store.get("신규비중_3개월_추세_pp_per_m"))
     add_metric_if(abnormal_metrics, "신규고객_단기하락", val, lambda v: v < -7.81,
-                  lambda v: f"최근 3개월 {v:.1f}pp 감소 추세")
+                  lambda v: f"최근 3개월 {v:.1f}pp 감소 추세 (상하위 그룹의 통계적 정상 범위(μ±σ)보다 낮음)")
 
     val = _safe(store.get("단골비중_YoY_pp"))
     add_metric_if(abnormal_metrics, "단골고객_이탈", val, lambda v: v < -3.68,
-                  lambda v: f"단골비중 YoY {v:.1f}pp 감소")
+                  lambda v: f"{v:.1f}pp 감소 (상하위 그룹의 통계적 정상 범위(μ±σ)보다 낮음)")
 
     val = _safe(store.get("단골비중_3개월_추세_pp_per_m"))
     add_metric_if(abnormal_metrics, "단골고객_단기하락", val, lambda v: v < -1.75,
-                  lambda v: f"최근 3개월 {v:.1f}pp 감소 추세")
+                  lambda v: f"최근 3개월 {v:.1f}pp 감소 추세 (상하위 그룹의 통계적 정상 범위(μ±σ)보다 낮음)")
 
     val = _safe(store.get("배달비중_YoY_pp"))
     add_metric_if(abnormal_metrics, "배달의존_증가", val, lambda v: v > 10.22,
-                  lambda v: f"배달비중 YoY +{v:.1f}pp 증가")
+                  lambda v: f"+{v:.1f}pp 증가 (상하위 그룹의 통계적 정상 범위(μ±σ)보다 높음)")
 
     val = _safe(area.get("매출_YoY") if area else None)
     add_metric_if(abnormal_metrics, "상권_매출감소", val, lambda v: v < 0,
-                  lambda v: f"상권 매출 YoY {v:.1f}% 감소")
+                  lambda v: f"{v:.1f}% 감소 (상하위 그룹의 통계적 정상 범위(μ±σ)보다 낮음)")
 
     val = _safe(area.get("유동인구_YoY") if area else None)
     add_metric_if(abnormal_metrics, "유동인구_감소", val, lambda v: v < 0,
-                  lambda v: f"유동인구 YoY {v:.1f}% 감소")
+                  lambda v: f"{v:.1f}% 감소 (상하위 그룹의 통계적 정상 범위(μ±σ)보다 낮음)")
 
     # 2. 피어 비교 이상치
     val = _safe(store.get("배달매출비중_차이_pp"))
     add_metric_if(abnormal_metrics, "배달전략_편차", val, lambda v: abs(v) > 14.76,
-                  lambda v: f"업종 대비 {v:+.1f}pp 차이")
+                  lambda v: f"업종 대비 {v:+.1f}pp 차이 (상하위 그룹의 통계적 정상 범위(μ±σ)보다 벗어남)")
 
     val = _safe(store.get("단골비중_차이_pp"))
     add_metric_if(abnormal_metrics, "단골비중_편차", val, lambda v: abs(v) > 8.69,
-                  lambda v: f"업종 대비 {v:+.1f}pp 차이")
+                  lambda v: f"업종 대비 {v:+.1f}pp 차이 (상하위 그룹의 통계적 정상 범위(μ±σ)보다 벗어남)")
 
     val = _safe(store.get("배달비중_백분위"))
     add_metric_if(abnormal_metrics, "배달채널_불균형", val, lambda v: v < 35.66 or v > 89.51,
-                  lambda v: f"배달비중 백분위 {v:.1f}% (극단값)")
+                  lambda v: f"배달비중 백분위 {v:.1f}% (상하위 그룹의 통계적 정상 범위(μ±σ)보다 {'낮음' if v < 35.66 else '높음'})")
 
     val = _safe(store.get("업종매출지수_백분위"))
     add_metric_if(abnormal_metrics, "업종매출경쟁력_낮음", val, lambda v: v < 67.32,
-                  lambda v: f"업종 내 매출 하위 {v:.0f}%")
+                  lambda v: f"업종 내 매출 하위 {v:.0f}% (상하위 그룹의 통계적 정상 범위(μ±σ)보다 낮음)")
 
     val = _safe(store.get("업종건수지수_백분위"))
     add_metric_if(abnormal_metrics, "업종회전력_낮음", val, lambda v: v < 58.19,
-                  lambda v: f"업종 내 건수 하위 {v:.0f}%")
+                  lambda v: f"업종 내 건수 하위 {v:.0f}% (상하위 그룹의 통계적 정상 범위(μ±σ)보다 낮음)")
 
     # 3. 논리 기반 이상치
     val = _safe(store.get("취소율_구간"))
     add_metric_if(abnormal_metrics, "취소율_높음", val, lambda v: v >= 5,
-                  lambda v: f"취소율 구간 {v} (높음)")
+                  lambda v: f"취소율 구간 {v} (높음, 상하위 그룹의 통계적 정상 범위(μ±σ)보다 높음)")
 
     val = _safe(store.get("동일_업종_매출건수_비율"))
     add_metric_if(abnormal_metrics, "거래수_이상", val, lambda v: v < 6.85 or v > 679.75,
-                  lambda v: f"동일업종 대비 거래수 비정상 ({v:.1f})")
+                  lambda v: f"동일업종 대비 거래수 비정상 ({v:.1f}, 상하위 그룹의 통계적 정상 범위(μ±σ)보다 {'낮음' if v < 6.85 else '높음'})")
 
     val = _safe(store.get("동일_업종_내_매출_순위_비율"))
     add_metric_if(abnormal_metrics, "매출순위_하위", val, lambda v: v > 17.29,
-                  lambda v: f"업종 내 매출 하위 {v:.1f}%")
+                  lambda v: f"업종 내 매출 하위 {v:.1f}% (상하위 그룹의 통계적 정상 범위(μ±σ)보다 낮음)")
 
     val = _safe(store.get("동일_업종_내_해지_가맹점_비중"))
     add_metric_if(abnormal_metrics, "업종해지율_위험", val, lambda v: v > 20.11,
-                  lambda v: f"동일 업종 내 해지 {v:.1f}%")
+                  lambda v: f"동일 업종 내 해지 {v:.1f}% (상하위 그룹의 통계적 정상 범위(μ±σ)보다 높음)")
 
     val = _safe(store.get("동일_상권_내_해지_가맹점_비중"))
     add_metric_if(abnormal_metrics, "상권해지율_위험", val, lambda v: v > 9.88,
-                  lambda v: f"상권 내 해지 {v:.1f}%")
+                  lambda v: f"상권 내 해지 {v:.1f}% (상하위 그룹의 통계적 정상 범위(μ±σ)보다 높음)")
 
     val = _safe(store.get("단골손님_비중"))
     add_metric_if(abnormal_metrics, "단골부족", val, lambda v: v < 0.089,
-                  lambda v: f"단골 고객 비중 낮음 ({v:.2f})")
+                  lambda v: f"단골 고객 비중 낮음 ({v:.2f}, 상하위 그룹의 통계적 정상 범위(μ±σ)보다 낮음)")
 
     val = _safe(store.get("배달매출_비중"))
     add_metric_if(abnormal_metrics, "배달의존위험", val, lambda v: v > 0.346,
-                  lambda v: f"배달 매출 의존 높음 ({v:.2f})")
+                  lambda v: f"배달 매출 의존 높음 ({v:.2f}, 상하위 그룹의 통계적 정상 범위(μ±σ)보다 높음)")
 
     # 결과 정리
     issue_metrics = _drop_na_metrics(issue_metrics)
@@ -136,3 +136,4 @@ if __name__ == "__main__":
     store_id = sys.argv[1]
     result = build_issue_metrics(store_id)
     print(json.dumps(result, ensure_ascii=False, indent=2))
+

@@ -8,9 +8,11 @@ from typing import List
 from mcp.tools import (
     search_merchant,
     load_store_data,
-    load_bizarea_data
+    load_bizarea_data, 
+    find_cooperation_candidates
 )
 from mcp.tools_web import web_search
+from mcp.tools_weather import get_weather_forecast 
 
 
 def get_mcp_tools() -> List:
@@ -28,7 +30,9 @@ def call_mcp_tool(tool_name: str, **kwargs) -> dict:
         "search_merchant": search_merchant,
         "load_store_data": load_store_data,
         "load_bizarea_data": load_bizarea_data,
-        "web_search": web_search
+        "find_cooperation_candidates": find_cooperation_candidates,
+        "web_search": web_search, 
+        "get_weather_forecast": get_weather_forecast
     }
     tool_func = tools_map.get(tool_name)
     if not tool_func:

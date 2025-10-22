@@ -7,10 +7,11 @@ from my_agent.utils.state import GraphState
 from my_agent.nodes.router import RouterNode
 from my_agent.nodes.web_augment import WebAugmentNode
 from my_agent.nodes.general import GeneralNode
-# 앞으로 구현 예정
 from my_agent.nodes.issue import IssueNode
 from my_agent.nodes.sns import SNSNode
 from my_agent.nodes.revisit import RevisitNode
+from my_agent.nodes.cooperation import CooperationNode
+from my_agent.nodes.season import SeasonNode
 
 from my_agent.nodes.relevance_check import check_relevance
 from my_agent.utils.chat_history import update_conversation_memory
@@ -30,13 +31,16 @@ def create_graph():
     workflow.add_node("issue", IssueNode())
     workflow.add_node("sns", SNSNode())
     workflow.add_node("revisit", RevisitNode())
+    workflow.add_node("cooperation", CooperationNode())
+    workflow.add_node("season", SeasonNode())
+
     workflow.add_node("relevance_checker", check_relevance)
     workflow.add_node("memory_updater", update_conversation_memory)
     
     # ─── 엣지 ───
     workflow.set_entry_point("router")
     
-    # ✅ router 후 need_clarify 체크
+    # router 후 need_clarify 체크
     def _after_router(state):
         if state.get("need_clarify"):
             print("[GRAPH] need_clarify=True 감지 → 즉시 종료")
@@ -47,14 +51,14 @@ def create_graph():
         "router",
         _after_router,
         {
-            "clarify": END,  # ✅ 후보 선택 필요 → 즉시 종료
-            "continue": "web_augment"  # ✅ 정상 진행
+            "clarify": END,  # 후보 선택 필요 → 즉시 종료
+            "continue": "web_augment"  # 정상 진행
         }
     )
 
     def _route_intent(state):
         intent = (state.get("intent") or "GENERAL").upper()
-        if intent in ["SNS", "REVISIT", "ISSUE", "GENERAL"]:
+        if intent in ["SNS", "REVISIT", "ISSUE", "GENERAL", "COOPERATION", "SEASON"]:
             return intent
         return "GENERAL"
     
@@ -69,11 +73,13 @@ def create_graph():
             "GENERAL": "general",
             "ISSUE": "issue",
             "SNS": "sns",
-            "REVISIT": "revisit"
+            "REVISIT": "revisit", 
+            "COOPERATION": "cooperation",
+            "SEASON": "season"
         }
     )
 
-    for node in ["general", "issue", "sns", "revisit"]:
+    for node in ["general", "issue", "sns", "revisit", "cooperation", "season"]:
         workflow.add_edge(node, "relevance_checker")
 
     workflow.add_conditional_edges(

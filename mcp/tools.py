@@ -395,3 +395,57 @@ def load_bizarea_data(store_row: Dict[str, Any], all_matches: bool = False) -> D
 
     # 정렬 불필요, 상권_코드도 없음 → 첫 행만 직 반환
     return {"success": True, "data": _to_serializable_row(hit.iloc[0]), "error": None}
+
+
+def find_cooperation_candidates(area_geo: str, industry: str, main_customers: List[str], limit: int = 10) -> Dict[str, Any]:
+    """
+    협업 후보 가맹점 조회
+    - 같은 상권 내에서 업종이 다르지만 주요 고객층이 겹치는 가맹점 후보를 탐색
+    
+    Args:
+        area_geo (str): 상권_지리
+        industry (str): 현재 업종
+        main_customers (List[str]): 핵심 고객층 리스트
+        limit (int): 결과 제한 수 (기본 10)
+
+    Returns:
+        {"success": bool, "count": int, "candidates": List[dict], "error": str or None}
+    """
+    print(f"[DEBUG] find_cooperation_candidates called with area_geo={area_geo}, industry={industry}, main_customers={main_customers}, limit={limit}")
+    if not area_geo or not industry or not main_customers:
+        return {
+            "success": False,
+            "count": 0,
+            "candidates": [],
+            "error": "필수 인자 누락 (area_geo, industry, main_customers)"
+        }
+
+    con = _get_db_connection()
+    mc_tuple = ", ".join([f"'{x}'" for x in main_customers])
+    query = f"""
+        SELECT DISTINCT
+            가맹점_구분번호, 가맹점명, 업종,
+            핵심고객_1순위, 핵심고객_2순위, 핵심고객_3순위,
+            거주고객_비중, 직장고객_비중, 유동인구고객_비중
+        FROM franchise
+        WHERE (상권 = '{area_geo}' OR 상권_지리 = '{area_geo}')
+        AND 업종 != '{industry}'
+        AND (
+                핵심고객_1순위 IN ({mc_tuple})
+            OR 핵심고객_2순위 IN ({mc_tuple})
+            OR 핵심고객_3순위 IN ({mc_tuple})
+        )
+        ORDER BY 기준년월 DESC
+        LIMIT {limit}
+    """
+    print("[DEBUG] SQL Query:")
+    print(query)
+    try:
+        df = con.execute(query).fetchdf()
+        if df.empty:
+            return {"success": True, "count": 0, "candidates": [], "error": None}
+        
+        return {"success": True, "count": len(df), "candidates": df.to_dict("records"), "error": None}
+    except Exception as e:
+
+        return {"success": False, "count": 0, "candidates": [], "error": str(e)}
