@@ -13,3 +13,6 @@ venv/
 .streamlit/
 .env
 data/preprocessed_df.csv
+
+data/
+data/*
