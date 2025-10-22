@@ -13,6 +13,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 from my_agent.utils.config import GOOGLE_API_KEY, LLM_MODEL, LLM_TEMPERATURE
 from my_agent.utils.tools import resolve_store, load_store_and_area_data
+from my_agent.utils.postprocess import postprocess_response, format_web_snippets
 
 from my_agent.metrics.main_metrics import build_main_metrics
 from my_agent.metrics.strategy_metrics import build_strategy_metrics
@@ -94,24 +95,6 @@ class SNSNode:
             model=LLM_MODEL,
             google_api_key=GOOGLE_API_KEY,
             temperature=LLM_TEMPERATURE)
-    def _format_web_snippets(self, snippets: list) -> str:
-        """웹 스니펫 포맷팅 (제목, 출처, 요약, URL)"""
-        if not snippets:
-            return "(없음)"
-
-        lines = []
-        for i, snip in enumerate(snippets[:5], 1):
-            title = snip.get("title", "제목 없음")
-            source = snip.get("source", "")
-            snippet = snip.get("snippet", "")
-            url = snip.get("url", "")
-            
-            lines.append(f"{i}. **{title}** ({source})")
-            if snippet:
-                lines.append(f"   └ {snippet[:150]}...")
-            if url:
-                lines.append(f"   └ {url}")
-        return "\n".join(lines)
 
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         user_query = state.get("user_query", "").strip()
@@ -156,59 +139,79 @@ class SNSNode:
                 pass
 
         state["metrics"] = metrics if metrics else None
-
         # ✅ 웹 참고 정보 포맷 적용
         web_section = ""
         if web_snippets:
-            web_section = f"\n### 웹 참고 정보\n{self._format_web_snippets(web_snippets)}\n"
+            web_section = f"\n### 웹 참고 정보\n{format_web_snippets(web_snippets)}\n"
+
 
         # 3. Prompt 구성(JSON 구조로 그대로 포함)
         prompt = f"""
-당신은 SNS 마케팅 전문가입니다. 아래 정보를 바탕으로 **데이터 기반 SNS 채널 추천 및 구체적인 홍보 전략**을 제시하세요.
+# 당신은 SNS 마케팅 전문가입니다  
+주어진 정보를 바탕으로 **데이터 기반 SNS 채널 추천과 실행 가능한 홍보 전략**을 제시하세요.
 
-### 질문
+---
+
+## 질문
 {user_query}
 
-### 가게 정보
+## 가게 정보
 {state.get("user_info")}
 
-### 데이터 지표
+## 데이터 지표
 {state.get("metrics")}
 
-### SNS 채널별 특성 (참고)
+## SNS 채널별 특성 (참고용)
 {SNS_CHANNEL_GUIDE}
 
-### 웹 참고 정보
-{web_section}
+## 웹 참고 정보
+{format_web_snippets(web_snippets)}
 
-### 답변 규칙
-- 1. 제공된 데이터를 기반으로 **고객 특성(연령대, 방문 패턴, 객단가 등)을 먼저 분석**
-- 2. 위의 SNS 채널 특성을 참고하여 **가게 데이터와 가장 잘 맞는 채널을 우선순위별로 3~4개 추천**
-- 2-1. 각 채널을 추천한 **구체적인 근거**를 명시 (예: "핵심 고객이 30대 여성이고, 비주얼이 중요한 업종이므로 Instagram 추천")
-- 2-2.각 채널별 **구체적인 운영 전략** 제시 (업로드 주기, 콘텐츠 유형, 해시태그 전략 등)
-- 2-3. 각 채널별 기대효과 제시 
-- 3. **실제 사용 가능한 홍보 문구 2~3개** 작성 (해시태그 포함)
-- 일반론 금지, 해당 스토어에 맞는 실행 가능한 전략만 제시
-- 가게 정보와 데이터가 없으면 웹 정보를 참고해 일반적인 SNS 마케팅 조언 제공
+---
+
+## 출력 형식 
+### 1. 현재 상황 요약  
+- 데이터를 바탕으로 매장의 현황과 주요 특징을 2~3문장으로 정리  
+
+### 2. 핵심 데이터 분석  
+- 핵심 지표 2~3개를 근거로 분석 (수치 포함)
+
+### 3. 전략 제안  
+- 가게 데이터와 가장 잘 맞는 채널을 우선 순위별로 2~3개 추천   
+- 각 채널별 구체적인 운영 전략 제시 
+
+### 4. 기대 효과 
+- 전략 실행 시 기대할 수 있는 지표 개선이나 매출 효과 설명
+
+---
+
+## 작성 규칙
+1. 제공된 데이터를 기반으로 **고객 특성(연령대, 방문 패턴, 객단가 등)** 분석  
+2. 위의 SNS 채널 특성을 참고하여 **가게 데이터와 가장 적합한 채널을 우선순위별로 3~4개 추천**
+   - 각 채널별 **추천 근거** 명시  
+   - 각 채널별 **운영 전략** 제시 (업로드 주기, 콘텐츠 유형, 해시태그 전략 등)  
+   - 각 채널별 **기대 효과** 명시  
+3. **실제 사용 가능한 홍보 문구**를 2~3개 제안 (해시태그 포함)  
+4. 일반론 금지 — 매장 데이터 기반으로만 전략 제시  
+5. 가게 데이터가 부족할 경우 웹 참고 정보를 바탕으로 일반적인 조언 제시
+
         """
         
-        
+    
+        # 4️⃣ LLM 호출
+        raw_response = self.llm.invoke(prompt).content
 
-        # 4. LLM 호출
-        # 4. LLM 호출
-        response = self.llm.invoke(prompt).content
+        # 5️⃣ ✅ 후처리 적용
+        final_output = postprocess_response(
+            raw_response=raw_response,
+            web_snippets=web_snippets
+        )
 
-        # ✅ LLM 응답 뒤에 웹 참고 정보 추가
-        final_output = response
-        if web_section:
-            final_output += f"\n\n---\n\n### 참고한 웹 정보\n{web_section}"
-
+        # 6️⃣ 결과 반환
         state["error"] = None
         state["final_response"] = final_output
         state["need_clarify"] = False  # 미정
         return state
-
-
 
 
 if __name__ == "__main__":
@@ -236,3 +239,4 @@ if __name__ == "__main__":
     node = SNSNode()
     result = node(state)
     print(json.dumps(result, ensure_ascii=False, indent=2))
+      

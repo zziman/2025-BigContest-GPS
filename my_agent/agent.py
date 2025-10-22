@@ -23,8 +23,7 @@ def create_graph():
     workflow.add_node("router", RouterNode())
     workflow.add_node(
         "web_augment",
-        WebAugmentNode(default_topk=DEFAULT_TOPK)
-    )
+        WebAugmentNode(default_topk=DEFAULT_TOPK))
     workflow.add_node("general", GeneralNode())
     workflow.add_node("issue", IssueNode())
     workflow.add_node("sns", SNSNode())
@@ -58,8 +57,8 @@ def create_graph():
         return "GENERAL"
     
     ## 확인하고 싶으면 자기 노드 이름으로 변환
-    # def _route_intent(state):
-    #     return "GENERAL"
+    #def _route_intent(state):
+        #return "SNS"
 
     workflow.add_conditional_edges(
         "web_augment",

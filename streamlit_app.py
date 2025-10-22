@@ -702,8 +702,4 @@ else:
             reply_with_time = reply + time_footer
             st.session_state.messages.append(AIMessage(content=reply_with_time))
 
-            st.session_state.last_web_snippets = result.get("web_snippets") or result.get("state", {}).get("web_snippets")
-            st.session_state.last_web_meta = result.get("web_meta") or result.get("state", {}).get("web_meta")
-
-            st.session_state.processing = False
-            st.rerun()
+                st.rerun()
