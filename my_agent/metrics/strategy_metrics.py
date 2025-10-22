@@ -32,7 +32,6 @@ def _drop_na_metrics(d: Dict[str, Any]) -> Dict[str, Any]:
     """NaN/None 값을 가진 항목은 제외"""
     return {k: v for k, v in d.items() if v is not None and not (isinstance(v, float) and np.isnan(v))}
 
-
 def build_strategy_metrics(store_num: str) -> Dict[str, Any]:
     """strategy 메트릭 생성"""
     state = {"store_id": store_num}
