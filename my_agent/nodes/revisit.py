@@ -2,10 +2,11 @@
 
 # -*- coding: utf-8 -*-
 """
-RevisitNode - 재방문 유도 전략 노드
+RevisitNode - 재방문 유도 전략 노드 (멀티턴 대화 지원)
 - 항상 resolve_store 실행 (store 탐지는 자동 시도)
 - store 없으면 fallback 답변
 - store 있으면 revisit 포함 분석
+- 후처리(postprocess_response)로 텍스트 정제 + 웹 출처 토글 추가
 """
 
 from typing import Dict, Any
@@ -17,6 +18,7 @@ from my_agent.utils.tools import resolve_store, load_store_and_area_data
 from my_agent.metrics.main_metrics import build_main_metrics
 from my_agent.metrics.strategy_metrics import build_strategy_metrics
 from my_agent.metrics.revisit_metrics import build_revisit_metrics
+from my_agent.utils.postprocess import postprocess_response, format_web_snippets
 
 
 class RevisitNode:
@@ -86,41 +88,63 @@ class RevisitNode:
         state["metrics"] = metrics if metrics else None
         state["errors"] = errors if errors else None  # 디버깅 편의
 
-        # 3) Prompt
+        # 3) ✅ 프롬프트 (요청한 형식으로 교체)
         prompt = f"""
-당신은 데이터 기반 재방문 전략을 설계하는 전문가 전략가입니다. 
-아래 정보를 바탕으로 매장의 재방문율과 단골 고객 비중을 높이기 위한 구체적 실행 전략을 제시하세요.
+# 당신은 데이터 기반 재방문 전략 설계 전문가입니다  
+주어진 정보를 바탕으로 매장의 **재방문율과 단골 고객 비중을 높이는 실행 전략**을 제시하세요.
 
-### 질문
+---
+
+## 질문
 {user_query}
 
-### 가게 정보
+## 가게 정보
 {state.get("user_info")}
 
-### 데이터 지표
+## 데이터 지표
 {state.get("metrics")}
 
-### 웹 참고 정보
-{web_snippets}
+## 웹 참고 정보
+{format_web_snippets(web_snippets)}
 
-### 답변 규칙
-- 분석 → 근거 → 전략 → 기대효과 순으로 답변
-- 제공된 데이터(metrics)에서 **수치 근거를 직접 인용**
-- 일반론 금지, **스토어 상황에 맞는 구체 전략** 제시
-- 리스트 또는 표 활용 가능
-- 지표가 부족하면 웹 정보(web_snippets)를 참고하되, 매장 상황에 맞는 현실적인 리텐션 전략 제시
-- 숫자나 지표를 임의로 만들어내지 말 것
+---
 
-### 출력 형식
-1. 현재 상황 요약
-2. 핵심 데이터 분석 (근거 중심)
-3. 재방문 유도 전략 (실행 가능하고 구체적으로)
-4. 기대 효과
+## 출력 형식
+### 1. 현재 상황 요약
+- 매장 현황과 고객 및 상권 패턴을 간단히 요약  
+
+### 2. 핵심 데이터 분석  
+- 재방문 관련 주요 수치 및 추세 분석 (근거 중심)
+
+### 3. 재방문 유도 전략  
+- 구체적이고 실행 가능한 전략 제안  
+- 캠페인, 혜택, 고객세분화 등 포함
+
+### 4. 기대 효과
+- 전략 실행 후 기대할 수 있는 변화와 지표 개선 전망
+
+---
+
+## 작성 규칙
+1. **분석 → 근거 → 전략 → 기대효과** 순으로 구성  
+2. 데이터(metrics)에서 **실제 수치를 직접 인용**  
+3. 일반론 금지 — 매장 상황에 맞는 구체적 전략 제시  
+4. 필요 시 **표나 리스트** 활용 가능  
+5. 데이터 부족 시 웹 참고 정보 기반으로 현실적 리텐션 전략 보완  
+6. 임의 수치 생성 금지
         """
 
         # 4) LLM 호출
-        response = self.llm.invoke(prompt).content
-        state["final_response"] = response
+        raw_response = self.llm.invoke(prompt).content
+
+        # 5) ✅ 후처리 적용: 텍스트 정제 + 웹 출처 토글(있을 때만)
+        final_output = postprocess_response(
+            raw_response=raw_response,
+            web_snippets=web_snippets
+        )
+
+        # 6) 상태 저장
+        state["final_response"] = final_output
         state["error"] = None
         state["need_clarify"] = False
         return state

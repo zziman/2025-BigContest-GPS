@@ -38,6 +38,7 @@ def _build_query(state):
     return query or "소상공인 마케팅 전략"
 
 
+
 class WebAugmentNode:
     """ 웹 검색 보강 노드 - GENERAL/SNS/ISSUE/REVISIT/COOPERATION/SEASON 자동 적용 """
 
