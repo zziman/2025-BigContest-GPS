@@ -1,4 +1,4 @@
-# [1021] 2025 BigContest – AI 비밀상담소 (PoC)
+# [1022] 2025 BigContest – AI 비밀상담소 (PoC)
 
 소상공인 가맹점 데이터를 기반으로 전략 초안을 자동 생성하는 에이전트.
 LangGraph로 멀티턴·분기·재시도를 제어하고, MCP 툴로 CSV 데이터를 조회한다.
@@ -7,49 +7,47 @@ LangGraph로 멀티턴·분기·재시도를 제어하고, MCP 툴로 CSV 데이
 
 ## 폴더 구조
 [Google Drive – BigContest Data & Models](https://drive.google.com/drive/folders/1PHuQ0MktQrNGLxbpdMhAsIu1dLTfrc56?usp=sharing)에서
-`label_encoder_store.pkl` 과 `preprocessed_df.csv` 파일을 다운로드하여 프로젝트의 data 폴더에 넣고,
+`label_encoder_store.pkl`, `preprocessed_df.csv`, `data.duckdb` 파일을 다운로드하여 프로젝트의 data 폴더에 넣고,
 `AutogluonModels` 폴더 전체를 프로젝트 루트(최상위 디렉터리)에 그대로 복사해서 사용 
 
 ```
 2025-BigContest/
 ├─ my_agent/
 │  ├─ __init__.py
-│  ├─ agent.py                         
-│  └─ utils/
-│     ├─ __init__.py
-│     ├─ config.py                     
-│     ├─ state.py
-│     ├─ prompt_builder.py
-│     ├─ postprocess.py
-│     ├─ chat_history.py                      
-│     ├─ tools.py                      
-│     ├─ metrics/         
-│     │  ├─ general_metrics.py 
-│     │  ├─ issue_metrics.py 
-│     │  ├─ main_metrics.py  
-│     │  ├─ revisit_metrics.py  
-│     │  ├─ sns_metrics.py  
-│     │  └─ strategy_metrics.py  
-│     ├─ metrics/        
-│     │  ├─ general_metrics.py 
-│     │  ├─ issue_metrics.py  
-│     │  ├─ main_metrics.py 
-│     │  ├─ revisit_metrics.py 
-│     │  ├─ sns_metrics.py 
-│     │  └─ strategy_metrics.py  
-│     └─ nodes/
-│        ├─ router.py                  
-│        ├─ sns.py                     
-│        ├─ revisit.py                 
-│        ├─ issue.py                  
-│        ├─ general.py                 
-│        └─ web_augment.py             
+│  ├─ agent.py
+│  ├─ utils/
+│  │  ├─ __init__.py
+│  │  ├─ config.py
+│  │  ├─ state.py
+│  │  ├─ prompt_builder.py
+│  │  ├─ postprocess.py
+│  │  ├─ chat_history.py
+│  │  └─ tools.py
+│  ├─ metrics/
+│  │  ├─ general_metrics.py
+│  │  ├─ issue_metrics.py
+│  │  ├─ main_metrics.py
+│  │  ├─ revisit_metrics.py
+│  │  ├─ sns_metrics.py
+│  │  ├─ season_metrics.py
+│  │  ├─ cooperation_metrics.py
+│  │  └─ strategy_metrics.py
+│  └─ nodes/
+│     ├─ router.py
+│     ├─ sns.py
+│     ├─ revisit.py
+│     ├─ issue.py
+│     ├─ general.py
+│     ├─ relevance_check.py
+│     ├─ season.py
+│     ├─ cooperation.py
+│     └─ web_augment.py
 │
 ├─ mcp/
 │  ├─ server.py
 │  ├─ tools.py
-│  ├─ tools_web.py                     
-│  ├─ contracts.py                     
+│  ├─ tools_web.py
+│  ├─ contracts.py
 │  └─ adapter_client.py
 │
 ├─ data/
@@ -69,13 +67,13 @@ LangGraph로 멀티턴·분기·재시도를 제어하고, MCP 툴로 CSV 데이
 │
 ├─ AutogluonModels/
 │
-├─ time_series.py   
-├─ dashboard.py           
-├─ streamlit_app.py                    
+├─ time_series.py
+├─ dashboard.py
+├─ streamlit_app.py
 ├─ 디버깅.py
 ├─ .streamlit/
-│  └─ secrets.toml                                                   
-└─ requirements.txt                                                                                  
+│  └─ secrets.toml
+└─ requirements.txt                                                            
 ```                                                 
 
 
@@ -91,6 +89,7 @@ cd 2025-BigContest
 uv venv
 source .venv/bin/activate    # Windows: .\.venv\Scripts\Activate.ps1
 uv pip install -r requirements.txt
+uv venv --python 3.10
 
 # 3) 시크릿(secrets.toml) 생성 — 권장 방식
 mkdir -p .streamlit
