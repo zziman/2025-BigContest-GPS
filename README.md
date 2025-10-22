@@ -14,42 +14,40 @@ LangGraph로 멀티턴·분기·재시도를 제어하고, MCP 툴로 CSV 데이
 2025-BigContest/
 ├─ my_agent/
 │  ├─ __init__.py
-│  ├─ agent.py                         
-│  └─ utils/
-│     ├─ __init__.py
-│     ├─ config.py                     
-│     ├─ state.py
-│     ├─ prompt_builder.py
-│     ├─ postprocess.py
-│     ├─ chat_history.py                      
-│     ├─ tools.py                      
-│     ├─ metrics/         
-│     │  ├─ general_metrics.py 
-│     │  ├─ issue_metrics.py 
-│     │  ├─ main_metrics.py  
-│     │  ├─ revisit_metrics.py  
-│     │  ├─ sns_metrics.py  
-│     │  └─ strategy_metrics.py  
-│     ├─ metrics/        
-│     │  ├─ general_metrics.py 
-│     │  ├─ issue_metrics.py  
-│     │  ├─ main_metrics.py 
-│     │  ├─ revisit_metrics.py 
-│     │  ├─ sns_metrics.py 
-│     │  └─ strategy_metrics.py  
-│     └─ nodes/
-│        ├─ router.py                  
-│        ├─ sns.py                     
-│        ├─ revisit.py                 
-│        ├─ issue.py                  
-│        ├─ general.py                 
-│        └─ web_augment.py             
+│  ├─ agent.py
+│  ├─ utils/
+│  │  ├─ __init__.py
+│  │  ├─ config.py
+│  │  ├─ state.py
+│  │  ├─ prompt_builder.py
+│  │  ├─ postprocess.py
+│  │  ├─ chat_history.py
+│  │  └─ tools.py
+│  ├─ metrics/
+│  │  ├─ general_metrics.py
+│  │  ├─ issue_metrics.py
+│  │  ├─ main_metrics.py
+│  │  ├─ revisit_metrics.py
+│  │  ├─ sns_metrics.py
+│  │  ├─ season_metrics.py
+│  │  ├─ cooperation_metrics.py
+│  │  └─ strategy_metrics.py
+│  └─ nodes/
+│     ├─ router.py
+│     ├─ sns.py
+│     ├─ revisit.py
+│     ├─ issue.py
+│     ├─ general.py
+│     ├─ relevance_check.py
+│     ├─ season.py
+│     ├─ cooperation.py
+│     └─ web_augment.py
 │
 ├─ mcp/
 │  ├─ server.py
 │  ├─ tools.py
-│  ├─ tools_web.py                     
-│  ├─ contracts.py                     
+│  ├─ tools_web.py
+│  ├─ contracts.py
 │  └─ adapter_client.py
 │
 ├─ data/
@@ -69,13 +67,13 @@ LangGraph로 멀티턴·분기·재시도를 제어하고, MCP 툴로 CSV 데이
 │
 ├─ AutogluonModels/
 │
-├─ time_series.py   
-├─ dashboard.py           
-├─ streamlit_app.py                    
+├─ time_series.py
+├─ dashboard.py
+├─ streamlit_app.py
 ├─ 디버깅.py
 ├─ .streamlit/
-│  └─ secrets.toml                                                   
-└─ requirements.txt                                                                                  
+│  └─ secrets.toml
+└─ requirements.txt                                                                               
 ```                                                 
 
 
@@ -91,6 +89,7 @@ cd 2025-BigContest
 uv venv
 source .venv/bin/activate    # Windows: .\.venv\Scripts\Activate.ps1
 uv pip install -r requirements.txt
+uv venv --python 3.10
 
 # 3) 시크릿(secrets.toml) 생성 — 권장 방식
 mkdir -p .streamlit
