@@ -55,8 +55,6 @@ def append_web_sources(response: str, snippets: List[Dict]) -> str:
         snippet = snip.get("snippet", "")
         
         sources.append(f"**{i}. {title}**")
-        if source:
-            sources.append(f"  - 출처: {source}")
         if snippet:
             summary = snippet[:100] + ("..." if len(snippet) > 100 else "")
             sources.append(f"  - 요약: {summary}")
@@ -92,10 +90,3 @@ def postprocess_response(
         text = append_web_sources(text, web_snippets)
 
     return text
-
-
-
-
-
-
-
