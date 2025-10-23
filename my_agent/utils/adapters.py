@@ -27,7 +27,7 @@ def run_one_turn(user_query: str, thread_id: str = "default") -> Dict[str, Any]:
     try:
         final_state = graph.invoke(initial_state)
 
-        # ✅ 디버깅 로그 추가
+        # 디버깅 로그 추가
         print(f"[ADAPTER] need_clarify: {final_state.get('need_clarify')}")
         print(f"[ADAPTER] store_candidates 수: {len(final_state.get('store_candidates', []))}")
 
@@ -43,7 +43,7 @@ def run_one_turn(user_query: str, thread_id: str = "default") -> Dict[str, Any]:
             metadata=metadata
         )
 
-        # ✅ 디버깅 로그
+        # 디버깅 로그
         print(f"[ADAPTER] 그래프 실행 완료")
         print(f"[ADAPTER] need_clarify: {final_state.get('need_clarify')}")
         print(f"[ADAPTER] store_id: {final_state.get('store_id')}")
@@ -56,7 +56,7 @@ def run_one_turn(user_query: str, thread_id: str = "default") -> Dict[str, Any]:
             ),
             "intent": final_state.get("intent"),
             "store_id": final_state.get("store_id"),
-            "user_info": final_state.get("user_info"),  # ✅ user_info 포함
+            "user_info": final_state.get("user_info"),  # user_info 포함
             "store_candidates": final_state.get("store_candidates", []),
             "final_response": final_state.get("final_response"),
             "messages": final_state.get("messages", []),
@@ -87,10 +87,10 @@ def run_one_turn_with_store(user_query: str, store_id: str, thread_id: str = "de
     history = load_chat_history(thread_id)
     previous_messages = history.get("messages", [])
 
-    # ✅ store_id를 초기 상태에 포함
+    # store_id를 초기 상태에 포함
     initial_state: GraphState = {
         "user_query": user_query,
-        "store_id": store_id,  # ✅ 미리 설정
+        "store_id": store_id,  # 미리 설정
         "user_info": None,
         "store_candidates": [],
         "need_clarify": False,
@@ -131,7 +131,7 @@ def run_one_turn_with_store(user_query: str, store_id: str, thread_id: str = "de
 
         # 결과 패키징
         result = {
-            "status": "error" if final_state.get("error") else "ok",  # ✅ need_clarify는 이미 해결됨
+            "status": "error" if final_state.get("error") else "ok",  # need_clarify는 이미 해결됨
             "intent": final_state.get("intent"),
             "store_id": final_state.get("store_id"),
             "user_info": final_state.get("user_info"),

@@ -18,31 +18,14 @@ SNS Metrics Builder
       "주중_매출_금액": float,
       "주말_매출_금액": float,
       "주력_연령대": str
-    },
-    "yyyymm": "YYYYMM"          # 데이터 기준년월
+    }
   }
 
 """
 
 from typing import Dict, Any
 from my_agent.utils.tools import load_store_and_area_data
-
-
-def _safe(x):
-    """결측값 처리 (NaN, None 등) → None"""
-    if x is None:
-        return None
-    try:
-        if pd.isna(x) or (isinstance(x, str) and x.strip() in ["", "NaN", "nan", "None","null"]):
-            return None
-    except Exception:
-        pass
-    return x
-
-def _drop_na_metrics(d: Dict[str, Any]) -> Dict[str, Any]:
-    """NaN/None 값을 가진 항목은 제외"""
-    return {k: v for k, v in d.items() if v is not None and not (isinstance(v, float) and np.isnan(v))}
-
+from my_agent.metrics.main_metrics import _safe, _drop_na_metrics
 
 
 def build_sns_metrics(store_num: str) -> Dict[str, Any]:
@@ -57,8 +40,6 @@ def build_sns_metrics(store_num: str) -> Dict[str, Any]:
         raise ValueError("store_data not found. Check store_num.")
     if not bizarea:
         raise ValueError("bizarea_data not found.")
-
-    yyyymm = store.get("기준년월", "정보없음")
 
     sns_node_metrics = {
         # 방문 고객 특성
@@ -76,10 +57,7 @@ def build_sns_metrics(store_num: str) -> Dict[str, Any]:
         "주력_연령대": _safe(bizarea.get("주력_연령대"))
     }
 
-    return {
-        "sns_node_metrics": _drop_na_metrics(sns_node_metrics),
-        "yyyymm": yyyymm
-    }
+    return {"sns_node_metrics": _drop_na_metrics(sns_node_metrics)}
 
 
 if __name__ == "__main__":

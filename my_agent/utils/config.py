@@ -8,16 +8,12 @@ import os
 from pathlib import Path
 from typing import Literal
 
-# ═══════════════════════════════════════════════════════════
 # 프로젝트 경로
-# ═══════════════════════════════════════════════════════════
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 MCP_DIR = PROJECT_ROOT / "mcp"
 
-# ═══════════════════════════════════════════════════════════
 # 설정 소스 우선순위: Streamlit secrets > .env > 기본값
-# ═══════════════════════════════════════════════════════════
 def _get_config(key: str, default=None):
     """
     설정 값 가져오기 (우선순위: Streamlit > .env)
@@ -48,9 +44,7 @@ def get_bool(key: str, default: bool = False) -> bool:
         return v
     return str(v).strip().lower() in ("1", "true", "yes", "y", "on")
 
-# ═══════════════════════════════════════════════════════════
 # API Keys
-# ═══════════════════════════════════════════════════════════
 GOOGLE_API_KEY = _get_config("GOOGLE_API_KEY")
 NAVER_CLIENT_ID     = _get_config("NAVER_CLIENT_ID", "")
 NAVER_CLIENT_SECRET = _get_config("NAVER_CLIENT_SECRET", "")
@@ -58,9 +52,7 @@ TAVILY_API_KEY      = _get_config("TAVILY_API_KEY", "")
 SERPER_API_KEY      = _get_config("SERPER_API_KEY", "")
 WEATHER_API_KEY      = _get_config("WEATHER_API_KEY", "")
 
-# ═══════════════════════════════════════════════════════════
 # 데이터 경로
-# ═══════════════════════════════════════════════════════════
 FRANCHISE_CSV = _get_config(
     "FRANCHISE_CSV",
     (DATA_DIR / "franchise_data_addmetrics.csv").as_posix()
@@ -70,9 +62,7 @@ BIZ_AREA_CSV = _get_config(
     (DATA_DIR / "biz_area_addmetrics.csv").as_posix()
 )
 
-# ═══════════════════════════════════════════════════════════
 # DuckDB 설정 
-# ═══════════════════════════════════════════════════════════
 DUCKDB_PATH = _get_config(
     "DUCKDB_PATH",
     (DATA_DIR / "data.duckdb").as_posix()
@@ -81,29 +71,21 @@ DUCKDB_PATH = _get_config(
 # DuckDB 사용 여부 토글 (True: DuckDB, False: CSV)
 USE_DUCKDB = get_bool("USE_DUCKDB", True) 
 
-# ═══════════════════════════════════════════════════════════
 # 검색 파라미터 (타임아웃/TopK/신선도)
-# ═══════════════════════════════════════════════════════════
 SEARCH_TIMEOUT        = float(_get_config("SEARCH_TIMEOUT", "12"))
 DEFAULT_TOPK          = int(_get_config("SEARCH_TOPK", "5"))
 DEFAULT_RECENCY_DAYS  = int(_get_config("SEARCH_RECENCY_DAYS", "90"))
 
-# ═══════════════════════════════════════════════════════════
 # MCP 설정
-# ═══════════════════════════════════════════════════════════
 MCP_ENABLED = str(_get_config("MCP_ENABLED", "1")) == "1"
 MCP_SERVER_PATH = (MCP_DIR / "server.py").as_posix()
 
-# ═══════════════════════════════════════════════════════════
 # LLM 설정
-# ═══════════════════════════════════════════════════════════
 LLM_MODEL = _get_config("LLM_MODEL", "gemini-2.5-flash")
 LLM_TEMPERATURE = float(_get_config("LLM_TEMPERATURE", "0.2"))
 LLM_MAX_RETRIES = int(_get_config("LLM_MAX_RETRIES", "2"))
 
-# ═══════════════════════════════════════════════════════════
 # 정책 토글
-# ═══════════════════════════════════════════════════════════
 CONFIRM_ON_MULTI = str(_get_config("CONFIRM_ON_MULTI", "0")) == "1"
 ENABLE_RELEVANCE_CHECK = str(_get_config("ENABLE_RELEVANCE_CHECK", "1")) == "1"
 ENABLE_MEMORY = str(_get_config("ENABLE_MEMORY", "1")) == "1"

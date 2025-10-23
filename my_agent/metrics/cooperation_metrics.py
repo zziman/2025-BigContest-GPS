@@ -23,8 +23,6 @@ def build_cooperation_metrics(store_num: str) -> Dict[str, Any]:
     if not store or not bizarea:
         raise ValueError("store_data or bizarea_data not found.")
 
-    yyyymm = store.get("기준년월", "정보없음")
-
     coop_metrics = {
         # ---- 고객층 유사도 기반 ----
         "핵심고객_1순위": _safe(store.get("핵심고객_1순위")),
@@ -69,10 +67,7 @@ def build_cooperation_metrics(store_num: str) -> Dict[str, Any]:
     except Exception as e:
         coop_metrics["협업_잠재_점수"] = None
 
-    return {
-        "coop_metrics": coop_metrics,
-        "yyyymm": yyyymm
-    }
+    return {"coop_metrics": coop_metrics}
 
 if __name__ == "__main__":
     import sys, json

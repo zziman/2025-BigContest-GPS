@@ -26,8 +26,6 @@ def build_issue_metrics(store_num: str) -> Dict[str, Any]:
     if not store:
         raise ValueError("store_data not found. Check store_num.")
 
-    yyyymm = store.get("기준년월")
-
     # ISSUE METRICS
     issue_metrics = {
         "동일_업종_매출금액_비율": _safe(store.get("동일_업종_매출금액_비율")),
@@ -122,9 +120,7 @@ def build_issue_metrics(store_num: str) -> Dict[str, Any]:
 
     return {
         "issue_metrics": issue_metrics,
-        "abnormal_metrics": abnormal_metrics,
-        "yyyymm": yyyymm
-    }
+        "abnormal_metrics": abnormal_metrics}
 
 
 if __name__ == "__main__":

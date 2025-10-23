@@ -10,9 +10,7 @@ Main Metrics Builder
 출력:
     {
       "main_metrics": {...},
-      "상권_단위_정보": {...},
-      "yyyymm": str
-    }
+      "상권_단위_정보": {...}}
 """
 import numpy as np 
 from typing import Dict, Any, List

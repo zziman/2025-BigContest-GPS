@@ -14,14 +14,6 @@ from mcp.tools import (
 from mcp.tools_web import web_search
 from mcp.tools_weather import get_weather_forecast 
 
-
-def get_mcp_tools() -> List:
-    """
-    MCP 툴 리스트 반환 (현재 미사용)
-    """
-    return [] # 빈 리스트 반환
-
-
 def call_mcp_tool(tool_name: str, **kwargs) -> dict:
     """
     MCP 툴 직접 호출 (adapter 없이 Python에서 직접 호출할 경우)

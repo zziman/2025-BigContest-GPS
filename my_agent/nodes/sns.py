@@ -139,7 +139,7 @@ class SNSNode:
                 pass
 
         state["metrics"] = metrics if metrics else None
-        # ✅ 웹 참고 정보 포맷 적용
+        # 웹 참고 정보 포맷 적용
         web_section = ""
         if web_snippets:
             web_section = f"\n### 웹 참고 정보\n{format_web_snippets(web_snippets)}\n"
@@ -198,16 +198,16 @@ class SNSNode:
         """
         
     
-        # 4️⃣ LLM 호출
+        # LLM 호출
         raw_response = self.llm.invoke(prompt).content
 
-        # 5️⃣ ✅ 후처리 적용
+        # 후처리 적용
         final_output = postprocess_response(
             raw_response=raw_response,
             web_snippets=web_snippets
         )
 
-        # 6️⃣ 결과 반환
+        # 결과 반환
         state["error"] = None
         state["final_response"] = final_output
         state["need_clarify"] = False  # 미정
@@ -228,7 +228,7 @@ if __name__ == "__main__":
             store_id = args[i + 1]
 
     if not query:
-        print("❗ 사용법: python -m my_agent.nodes.sns --query '질문' [--store STORE_ID]")
+        print("사용법: python -m my_agent.nodes.sns --query '질문' [--store STORE_ID]")
         # python -m my_agent.nodes.sns --query "해당 가게의 재방문율을 높이는 전략 알려줘" --store 761947ABD9
         sys.exit(1)
 

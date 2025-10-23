@@ -74,7 +74,7 @@ class RevisitNode:
 
             # 2-3) 재방문 지표 + 이상치
             try:
-                res_revisit = build_revisit_metrics(store_id)  # {"revisit_metrics": {...}, "abnormal_metrics": {...}, "yyyymm": ...}
+                res_revisit = build_revisit_metrics(store_id)  # {"revisit_metrics": {...}, "abnormal_metrics": {...}}
                 if isinstance(res_revisit, dict):
                     if res_revisit.get("revisit_metrics"):
                         metrics["revisit_metrics"] = res_revisit["revisit_metrics"]
@@ -87,7 +87,7 @@ class RevisitNode:
         state["metrics"] = metrics if metrics else None
         state["errors"] = errors if errors else None  # 디버깅 편의
 
-        # 3) ✅ 프롬프트 (요청한 형식으로 교체)
+        # 3) 프롬프트
         prompt = f"""
 # 당신은 데이터 기반 재방문 전략 설계 전문가입니다  
 주어진 정보를 바탕으로 매장의 **재방문율과 단골 고객 비중을 높이는 실행 전략**을 제시하세요.
@@ -136,7 +136,7 @@ class RevisitNode:
         # 4) LLM 호출
         raw_response = self.llm.invoke(prompt).content
 
-        # 5) ✅ 후처리 적용: 텍스트 정제 + 웹 출처 토글(있을 때만)
+        # 5) 후처리 적용: 텍스트 정제 + 웹 출처 토글(있을 때만)
         final_output = postprocess_response(
             raw_response=raw_response,
             web_snippets=web_snippets
@@ -163,7 +163,7 @@ if __name__ == "__main__":
             store_id = args[i + 1]
 
     if not query:
-        print("❗ 사용법: python -m my_agent.nodes.revisit --query '질문' [--store STORE_ID]")
+        print("사용법: python -m my_agent.nodes.revisit --query '질문' [--store STORE_ID]")
         # 예) python -m my_agent.nodes.revisit --query "해당 가게의 재방문율을 높이는 전략 알려줘" --store 761947ABD9
         sys.exit(1)
 
