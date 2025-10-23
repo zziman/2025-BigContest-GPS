@@ -1,4 +1,5 @@
-# app.py (간소화 버전)
+# time_series.py
+
 import streamlit as st
 import joblib
 import pandas as pd
@@ -7,9 +8,7 @@ from autogluon.tabular import TabularPredictor
 st.set_page_config(page_title="Next Month Sales Prediction", layout="centered")
 st.title("🛒 다음달 매출 예상")
 
-# ------------------------------
 # 모델 및 데이터 로드
-# ------------------------------
 @st.cache_data
 def load_predictor():
     return TabularPredictor.load("AutogluonModels/ag-20251018_185635")
@@ -35,9 +34,7 @@ label_map = {
     5: "10%이하"
 }
 
-# ------------------------------
 # 예측 함수
-# ------------------------------
 def predict_next_month(store_id):
     try:
         encoded_store_id = label_encoder.transform([store_id])[0]
@@ -66,9 +63,7 @@ def predict_next_month(store_id):
         "predicted_probability": pred_prob
     }
 
-# ------------------------------
 # Streamlit UI
-# ------------------------------
 store_id_input = st.text_input("Store ID를 입력해주세요:", "")
 if st.button("입력"):
     if store_id_input.strip() == "":
