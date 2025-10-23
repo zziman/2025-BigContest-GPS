@@ -21,6 +21,7 @@
 - [Naver 개발자 센터](https://developers.naver.com/main/)에서 회원가입 후 API key 발급 후 `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`에 복사
 - [SERPER](https://serper.dev/?utm_term=google%20search%20api&gad_source=1&gad_campaignid=18303173259&gbraid=0AAAAAo4ZGoFTAeI1fAA-lanHIZ6WQlowT&gclid=CjwKCAjwgeLHBhBuEiwAL5gNEfzLIWpKg1JLqHiADvDkkEgYntLfZAJOmEG0Xs3UkvmsNrPQwX7_pBoCYV4QAvD_BwE)에서 회원가입 후 API key 발급 후 `SERPER_API_KEY`에 복사
 - [기상청 API허브 4.3 단기예보조회](https://apihub.kma.go.kr/)에서 API 신청 후 API Key 복사 후 `WEATHER_API_KEY`에 복사
+- 브라우저를 라이트 모드로 전환해주세요! (선택 사항, 스트림릿 시각화 측면)
 
 ## 설치 및 실행(uv)
 ```bash

@@ -1,4 +1,4 @@
-# mcp/tools.py (최종 정리 버전)
+# mcp/tools.py 
 # -*- coding: utf-8 -*-
 """
 MCP 툴 함수 (DuckDB 기반)
@@ -99,15 +99,20 @@ def search_merchant(merchant_name: str) -> Dict[str, Any]:
     """
     가맹점명(마스킹 포함) 또는 가맹점_구분번호로 검색
 
-    동작 요약
-    - 가맹점ID(영문대문자+숫자 10~11)면 ID 단건 조회
-    - 입력에 *가 있으면: 정규화된 상호명 기준으로
-        길이 == len(prefix) + 별개수  AND  prefix로 시작
-      인 항목만 정확매칭으로 반환 (별 개수 다른 후보는 제외)
-    - 그 외는 일반 부분검색(가맹점명 LIKE '%q%')
+    우선순위
+    1. 별개수 정확히 일치 (정확매칭)
+    2. 별개수 달라도 prefix 동일 (확장매칭)
+    3. 일반 LIKE 검색
     """
     import re
     import pandas as pd
+    import numpy as np
+
+    def _to_py(obj):
+        """numpy → Python 기본형 변환"""
+        if isinstance(obj, (np.generic,)):
+            return obj.item()
+        return obj
 
     q = (merchant_name or "").strip()
     if not q:
@@ -121,7 +126,9 @@ def search_merchant(merchant_name: str) -> Dict[str, Any]:
 
     store_id_pattern = r"^[A-Z0-9]{10,11}$"
 
-    # DuckDB 경로
+    # ─────────────────────────────────────
+    # 🧭 DuckDB 사용
+    # ─────────────────────────────────────
     if USE_DUCKDB:
         con = _get_db_connection()
 
@@ -148,32 +155,35 @@ def search_merchant(merchant_name: str) -> Dict[str, Any]:
                     "search_type": "id",
                 }
 
+            merchants = [
+                {k: _to_py(v) for k, v in row.items()} for row in df.to_dict("records")
+            ]
             return {
                 "found": True,
                 "message": f"가맹점_구분번호 '{q}' 조회 성공",
                 "count": 1,
-                "merchants": df.to_dict("records"),
+                "merchants": merchants,
                 "search_type": "id",
             }
 
-        # B) 마스킹 정확매칭 (prefix + 별개수 정확히 일치)
+        # B) 마스킹 매칭 (정확 → 확장)
         if "*" in q:
             m = re.match(r"^([^\*]*)(\*+)$", q)
             if m:
-                prefix_raw = m.group(1)          # 예: '본죽'
-                star_count = len(m.group(2))     # 예: 2
+                prefix_raw = m.group(1)
+                star_count = len(m.group(2))
                 mask_len = len(prefix_raw) + star_count
 
-                sql = r"""
+                sql_base = r"""
                 WITH base AS (
                   SELECT
                     가맹점_구분번호, 가맹점명, 가맹점_주소, 업종, 상권_지리, 기준년월,
                     REGEXP_REPLACE(
                       REGEXP_REPLACE(
-                        REGEXP_REPLACE(가맹점명, '\s+', ''),              -- 공백 제거
-                        '[()\{\}\[\]<>·•\-\_\/]', ''                      -- 특수기호 제거
+                        REGEXP_REPLACE(가맹점명, '\s+', ''),
+                        '[()\{\}\[\]<>·•\-\_\/]', ''
                       ),
-                      '점$', ''                                           -- 접미 '점' 제거
+                      '점$', ''
                     ) AS norm_name
                   FROM franchise
                 ),
@@ -187,29 +197,57 @@ def search_merchant(merchant_name: str) -> Dict[str, Any]:
                   가맹점_구분번호, 가맹점명, 가맹점_주소, 업종, 상권_지리, norm_name
                 FROM dedup
                 WHERE rn = 1
+                """
+
+                # 1️⃣ 별개수 정확히 일치
+                sql_exact = sql_base + """
                   AND LENGTH(norm_name) = ?
                   AND norm_name LIKE ?
-                ORDER BY 가맹점명
+                  ORDER BY 가맹점명
                 """
-                # 접두부 정확시작 매칭
-                params = [mask_len, f"{prefix_raw}%"]
-                df = con.execute(sql, params).fetchdf()
+                df_exact = con.execute(
+                    sql_exact, [mask_len, f"{prefix_raw}%"]
+                ).fetchdf()
 
-                if df.empty:
+                # 2️⃣ 별개수 달라도 prefix 동일
+                sql_relaxed = sql_base + """
+                  AND norm_name LIKE ?
+                  ORDER BY LENGTH(norm_name) ASC, 가맹점명
+                """
+                df_relaxed = con.execute(
+                    sql_relaxed, [f"{prefix_raw}%"]
+                ).fetchdf()
+
+                if not df_exact.empty:
+                    df_final = df_exact
+                    priority = "정확매칭"
+                elif not df_relaxed.empty:
+                    df_final = df_relaxed
+                    priority = "확장매칭"
+                else:
                     return {
                         "found": False,
-                        "message": f"마스킹 '{q}'와 정확히 일치하는 가맹점이 없습니다.",
+                        "message": f"마스킹 '{q}'로 일치/유사한 가맹점을 찾을 수 없습니다.",
                         "count": 0,
                         "merchants": [],
                         "search_type": "name",
                     }
 
-                merchants = df[
-                    ["가맹점_구분번호", "가맹점명", "가맹점_주소", "업종", "상권_지리"]
-                ].to_dict("records")
+                merchants = [
+                    {k: _to_py(v) for k, v in row.items()}
+                    for row in df_final[
+                        ["가맹점_구분번호", "가맹점명", "가맹점_주소", "업종", "상권_지리"]
+                    ]
+                    .drop_duplicates(subset=["가맹점_구분번호"])
+                    .to_dict("records")
+                ]
+
+                print(
+                    f"[DEBUG] {priority}: {len(merchants)}건 / prefix='{prefix_raw}', len={mask_len}"
+                )
                 return {
                     "found": True,
-                    "message": f"마스킹 '{q}' 정확매칭 {len(merchants)}개",
+                    "message": f"마스킹 '{q}' {priority} {len(merchants)}개",
                     "count": len(merchants),
                     "merchants": merchants,
                     "search_type": "name",
@@ -244,18 +282,22 @@ def search_merchant(merchant_name: str) -> Dict[str, Any]:
                 "search_type": "name",
             }
 
+        merchants = [
+            {k: _to_py(v) for k, v in row.items()} for row in df.to_dict("records")
+        ]
         return {
             "found": True,
-            "message": f"'{q}' 검색 결과 {len(df)}개",
-            "count": len(df),
-            "merchants": df.to_dict("records"),
+            "message": f"'{q}' 검색 결과 {len(merchants)}개",
+            "count": len(merchants),
+            "merchants": merchants,
             "search_type": "name",
         }
 
-    # CSV 경로 (레거시)
+    # ─────────────────────────────────────
+    # 🧾 CSV 경로 (레거시)
+    # ─────────────────────────────────────
     df = _load_franchise_df().copy()
 
-    # A) 가맹점ID
     if re.match(store_id_pattern, q.upper()):
         hit = df[df["가맹점_구분번호"] == q.upper()].copy()
         if hit.empty:
@@ -266,13 +308,17 @@ def search_merchant(merchant_name: str) -> Dict[str, Any]:
                 "merchants": [],
                 "search_type": "id",
             }
+
         hit = (
             hit.sort_values("기준년월", ascending=False)
-               .drop_duplicates(subset=["가맹점_구분번호"], keep="first")
+            .drop_duplicates(subset=["가맹점_구분번호"], keep="first")
         )
-        merchants = hit[
-            ["가맹점_구분번호", "가맹점명", "가맹점_주소", "업종", "상권_지리"]
-        ].to_dict("records")
+        merchants = [
+            {k: _to_py(v) for k, v in row.items()}
+            for row in hit[
+                ["가맹점_구분번호", "가맹점명", "가맹점_주소", "업종", "상권_지리"]
+            ].to_dict("records")
+        ]
         return {
             "found": True,
             "message": f"가맹점_구분번호 '{q}' 조회 성공",
@@ -281,7 +327,7 @@ def search_merchant(merchant_name: str) -> Dict[str, Any]:
             "search_type": "id",
         }
 
-    # B) 마스킹 정확매칭
+    # 마스킹 (CSV 모드)
     if "*" in q:
         m = re.match(r"^([^\*]*)(\*+)$", q)
         if m:
@@ -289,23 +335,30 @@ def search_merchant(merchant_name: str) -> Dict[str, Any]:
             star_count = len(m.group(2))
             mask_len = len(prefix_raw) + star_count
 
-            # 정규화 상호 생성 (검색 일관성을 위해서만 사용)
             df["norm_name"] = (
                 df["가맹점명"]
                 .astype(str)
-                .str.replace(r"\s+", "", regex=True)                 # 공백 제거
-                .str.replace(r"[()\{\}\[\]<>·•\-\_\/]", "", regex=True)  # 특수기호 제거
-                .str.replace(r"점$", "", regex=True)                  # 접미 '점' 제거
+                .str.replace(r"\s+", "", regex=True)
+                .str.replace(r"[()\{\}\[\]<>·•\-\_\/]", "", regex=True)
+                .str.replace(r"점$", "", regex=True)
             )
-            hit = df[
+
+            df_exact = df[
                 (df["norm_name"].str.len() == mask_len)
                 & (df["norm_name"].str.startswith(prefix_raw, na=False))
-            ].copy()
+            ]
+            df_relaxed = df[df["norm_name"].str.startswith(prefix_raw, na=False)]
 
-            if hit.empty:
+            if not df_exact.empty:
+                hit = df_exact
+                priority = "정확매칭"
+            elif not df_relaxed.empty:
+                hit = df_relaxed
+                priority = "확장매칭"
+            else:
                 return {
                     "found": False,
-                    "message": f"마스킹 '{q}'와 정확히 일치하는 가맹점이 없습니다.",
+                    "message": f"마스킹 '{q}'로 일치/유사한 가맹점을 찾을 수 없습니다.",
                     "count": 0,
                     "merchants": [],
                     "search_type": "name",
@@ -313,20 +366,26 @@ def search_merchant(merchant_name: str) -> Dict[str, Any]:
 
             hit = (
                 hit.sort_values("기준년월", ascending=False)
-                   .drop_duplicates(subset=["가맹점_구분번호"], keep="first")
+                .drop_duplicates(subset=["가맹점_구분번호"], keep="first")
             )
-            merchants = hit[
-                ["가맹점_구분번호", "가맹점명", "가맹점_주소", "업종", "상권_지리"]
-            ].to_dict("records")
+            merchants = [
+                {k: _to_py(v) for k, v in row.items()}
+                for row in hit[
+                    ["가맹점_구분번호", "가맹점명", "가맹점_주소", "업종", "상권_지리"]
+                ].to_dict("records")
+            ]
+            print(
+                f"[DEBUG] (CSV) {priority}: {len(merchants)}건 / prefix='{prefix_raw}', len={mask_len}"
+            )
             return {
                 "found": True,
-                "message": f"마스킹 '{q}' 정확매칭 {len(merchants)}개",
+                "message": f"마스킹 '{q}' {priority} {len(merchants)}개",
                 "count": len(merchants),
                 "merchants": merchants,
                 "search_type": "name",
             }
 
-    # C) 일반 부분검색
+    # C) 일반 LIKE
     mask = df["가맹점명"].str.contains(q, case=False, na=False)
     hit = df[mask].copy()
     if hit.empty:
@@ -340,11 +399,14 @@ def search_merchant(merchant_name: str) -> Dict[str, Any]:
 
     hit = (
         hit.sort_values("기준년월", ascending=False)
-           .drop_duplicates(subset=["가맹점_구분번호"], keep="first")
+        .drop_duplicates(subset=["가맹점_구분번호"], keep="first")
     )
-    merchants = hit.head(50)[
-        ["가맹점_구분번호", "가맹점명", "가맹점_주소", "업종", "상권_지리"]
-    ].to_dict("records")
+    merchants = [
+        {k: _to_py(v) for k, v in row.items()}
+        for row in hit.head(50)[
+            ["가맹점_구분번호", "가맹점명", "가맹점_주소", "업종", "상권_지리"]
+        ].to_dict("records")
+    ]
     return {
         "found": True,
         "message": f"'{q}' 검색 결과 {len(merchants)}개",
