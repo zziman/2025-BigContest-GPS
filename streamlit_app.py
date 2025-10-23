@@ -721,14 +721,18 @@ else:
             st.session_state.clarify_candidates = result.get("store_candidates", []) or []
             st.session_state.last_query_for_clarify = last_query
 
-            reply = result.get("final_response") or "후보가 여러 개입니다. 지점을 선택해주세요."
-            st.session_state.messages.append(AIMessage(content=reply))
-            st.session_state.processing = False
-            st.rerun()
+            candidates = st.session_state.clarify_candidates
+            if not candidates:
+                # ✅ 후보 없음 → 오류 메시지로 처리
+                err_msg = result.get("error") or result.get("message") or "검색 결과가 없습니다."
+                reply = f"❌ {err_msg}"
+                # clarify 모드 종료 (후보가 없으므로 선택 대기할 필요 없음)
+                st.session_state.pending_clarify = False
+            else:
+                # ✅ 후보 있음 → 정상 후보 선택 모드
+                reply = result.get("final_response") or "🔍 후보가 여러 개입니다. 지점을 선택해주세요."
 
-        elif status == "error":
-            err = result.get("error") or "알 수 없는 오류가 발생했습니다."
-            st.session_state.messages.append(AIMessage(content=f"❌ {err}"))
+            st.session_state.messages.append(AIMessage(content=reply))
             st.session_state.processing = False
             st.rerun()
 
