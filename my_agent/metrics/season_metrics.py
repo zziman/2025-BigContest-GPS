@@ -37,8 +37,8 @@ def build_season_metrics(store_id: str) -> Dict[str, Any]:
     if not store:
         return {"success": False, "error": "store_data not found"}
 
-    lat = store.get("위도") or 37.57
-    lon = store.get("경도") or 126.98
+    lat = store.get("위도", 37.57)
+    lon = store.get("경도", 126.98)
 
     # 날씨 데이터 불러오기
     weather = get_weather_forecast_data(lat, lon, days=3)

@@ -19,7 +19,7 @@ from my_agent.utils.config import (
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 
-# ========= 공통 유틸 =========
+# 공통 유틸
 def _norm(text: Optional[str]) -> str:
     return (text or "").strip()
 
@@ -40,7 +40,7 @@ def clean_raw_content(text: str) -> str:
     return text
 
 
-# ========= 쿼리 재작성 (Gemini, optional) =========
+# 쿼리 재작성 (Gemini, optional)
 def _rewrite_query_gemini(query: str) -> str:
     prompt = f"""
     당신은 소상공인·자영업자를 돕는 마케팅 전문 검색어 생성기입니다.
@@ -61,7 +61,7 @@ def _rewrite_query_gemini(query: str) -> str:
         return query
 
 
-# ========= Serper API 호출 =========
+# Serper API 호출
 def _serper_search(q: str, top_k: int = 10) -> Tuple[str, List[WebDoc]]:
     """Serper.dev (Google Search API) 호출"""
     if not SERPER_API_KEY:
@@ -98,7 +98,7 @@ def _serper_search(q: str, top_k: int = 10) -> Tuple[str, List[WebDoc]]:
         return "serper", []
 
 
-# ========= 결과 정제 =========
+# 결과 정제
 def _clean_results(docs: List[WebDoc]) -> List[WebDoc]:
     seen = set()
     out: List[WebDoc] = []
@@ -117,7 +117,7 @@ def _clean_results(docs: List[WebDoc]) -> List[WebDoc]:
     return out
 
 
-# ========= 메인 함수 =========
+# 메인 함수
 def web_search(query: str,
                top_k: int = DEFAULT_TOPK,
                rewrite_query: bool = True,
@@ -173,7 +173,7 @@ def web_search(query: str,
     return result
 
 
-# ========= Output Builder =========
+# Output Builder
 def _build_output(success, provider_used, docs, raw_query, query_used, retry_count, fallback_used, t0):
     return {
         "success": success,
@@ -190,7 +190,7 @@ def _build_output(success, provider_used, docs, raw_query, query_used, retry_cou
     }
 
 
-# ========= Local Test =========
+# Local Test
 if __name__ == "__main__":
     print("[Serper] web_search 테스트")
     result = web_search("분식집 손님 줄었어", rewrite_query=False, debug=True)

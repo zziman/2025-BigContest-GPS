@@ -19,9 +19,7 @@ from mcp.adapter_client import call_mcp_tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from my_agent.utils.config import GOOGLE_API_KEY, LLM_MODEL, LLM_TEMPERATURE
 
-# ─────────────────────────
 # Helpers
-# ─────────────────────────
 def normalize_store_name(name: str) -> str:
     """가맹점명 정규화: 공백 제거"""
     if not name:
@@ -52,11 +50,9 @@ def check_forbidden_content(response: str) -> Tuple[bool, List[str]]:
             found.append(p)
     return len(found) == 0, found
 
-# ─────────────────────────
 # Store Resolver (LLM 기반)
-# ─────────────────────────
 class StoreResolver:
-    """LLM 기반 가맹점 정보 추출기 (순수 추출만 담당)"""
+    """LLM 기반 가맹점 정보 추출"""
     
     def __init__(self):
         self.llm = ChatGoogleGenerativeAI(
@@ -75,48 +71,33 @@ class StoreResolver:
             - "761947ABD9"
             - None (가맹점 정보 없음)
         """
-        system = """당신은 사용자 질문에서 가맹점 관련 정보를 추출하는 전문가입니다.
+        system = """당신은 사용자 질문에서 가맹점 관련 텍스트(마스킹된 가맹점명 또는 가맹점_구분번호)를
+원형 그대로 추출하는 도우미입니다.
 
-⚠️ 중요: 가맹점명은 개인정보 보호를 위해 **앞 1~2글자만 공개**되고, 나머지는 `*`로 마스킹됩니다.
-- 예: "본죽****", "스타*****", "동대***", **"호*"**(두 글자 상호가 한 글자만 공개되는 사례)
-- 추출 규칙: **별표(`*`)를 모두 제거하고 , **보이는 접두부(1~2글자)**만 그대로 추출**
-- 보이지 않는 글자는 절대 추측하거나 임의로 보완하지 마세요.
-
-규칙:
-1. **가맹점_구분번호가 있으면 최우선 추출** (10-11자리 영문+숫자)
-   - 구분번호에는 마스킹 없음 (있는 그대로 추출)
-   - 예: "761947ABD9", "AB12345678"
-
-2. **마스킹된 가맹점명은 `*`를 모두 제거하고 보이는 접두부만 반환**
-   - ✅ "본죽****" → "본죽"
-   - ✅ "스타*****" → "스타"
-   - ✅ "동대***" → "동대"
-   - ✅ **"호*" → "호"**  (접두부가 1글자뿐이어도 그대로 반환)
-   - ❌ "본죽****" → "본죽****" (별표 포함 금지)
-   - 불필요한 공백/괄호/특수문자/접미어(예: "점")는 제거
-
-3. **"우리 가게", "여기" 같은 모호한 표현은 무시**
-   - 이런 경우 "NONE" 반환
-
-4. **가맹점 정보가 없으면 "NONE" 반환**
+절대 규칙:
+- 입력에 포함된 별표(*)를 단 하나도 제거/변형하지 마세요.
+- 공백, 따옴표, 괄호 등 감싸는 문자만 제거하고, 핵심 토큰은 그대로 보존합니다.
+- 절대 추측/보완 금지. 보이지 않는 글자를 임의로 채우지 마세요.
+- 출력은 단 한 줄, 추가 설명/접두사/접미사 금지.
 
 우선순위:
-- 구분번호 > 마스킹된 가맹점명 앞 2글자
-- "761947ABD9 본죽****" → "761947ABD9" (구분번호만)
-- "본죽**** 761947ABD9" → "761947ABD9" (구분번호만)
+1) 가맹점_구분번호(영문대문자+숫자 10~11자리)가 있으면 그 '문자열'만 반환.
+2) 마스킹 가맹점명이 있으면, '보이는 접두부 + 별표 그대로' 반환.
+   - 예: 본죽**** → 본죽****
+   - 예: 동대***  → 동대***
+   - 예: 호*      → 호*
+3) 모호 표현(“우리 가게”, “여기”)만 있을 경우 "NONE" 반환.
 
-예시:
-✅ "본죽**** 매출 분석해줘" → "본죽"
-✅ "스타벅스***** 재방문율은?" → "스타벅스"
-✅ "동대문*** 문제점 찾아줘" → "동대문"
-✅ "761947ABD9 분석해줘" → "761947ABD9"
-✅ "761947ABD9 본죽****" → "761947ABD9"  # (구분번호 우선)
-✅ "본죽**** 761947ABD9 트렌드" → "761947ABD9"  # (구분번호 우선)
-✅ "호* 트렌드 알려줘" → "호"  # (두 글자 상호인데 1글자만 공개된 마스킹 사례)
-❌ "우리 가게 매출 올리는 법" → "NONE"
-❌ "치킨집 마케팅 트렌드" → "NONE"
+정규화 규칙:
+- 토큰 양옆의 공백/따옴표/괄호만 제거 (예: ' "본죽****" ' → 본죽****).
+- 토큰 내부의 한글/영문/숫자/* 는 한 글자도 바꾸지 않음.
+- 대소문자 변경 금지(구분번호도 원형 유지).
 
-출력: 추출된 텍스트만 한 줄로 (**별표 제거**, 추가 설명 금지)"""
+출력 형식(반드시 하나만):
+- 가맹점_구분번호: 예) 761947ABD9
+- 마스킹 상호: 예) 본죽****, 동대***, 호*
+- 없으면: NONE
+"""
 
         prompt = f"질문: {user_query}\n추출:"
         
@@ -128,9 +109,6 @@ class StoreResolver:
             if extracted.upper() in ["NONE", "없음", "N/A", ""]:
                 print("[RESOLVER] LLM 추출 결과: 가맹점 정보 없음")
                 return None
-            
-            # ✅ 안전장치: 혹시 LLM이 *를 포함했다면 제거
-            extracted = extracted.replace('*', '')
             
             print(f"[RESOLVER] LLM 추출 결과: '{extracted}'")
             return extracted
@@ -159,7 +137,7 @@ def resolve_store(state: GraphState) -> GraphState:
     - MCP: DB 조회 + 패턴 인식 + 매칭 로직
     """
     
-    # ✅ 이미 store_id가 있으면 스킵
+    # 이미 store_id가 있으면 스킵
     if state.get("store_id"):
         print(f"[RESOLVER] store_id 이미 존재: {state['store_id']}")
         state["need_clarify"] = False
@@ -176,9 +154,7 @@ def resolve_store(state: GraphState) -> GraphState:
     print(f"[RESOLVER] 사용자 질문: '{user_query}'")
     print("="*60)
     
-    # ═════════════════════════════════════════
     # 1. LLM으로 가맹점 관련 텍스트 추출
-    # ═════════════════════════════════════════
     resolver = get_resolver()
     search_query = resolver.extract_store_info(user_query)
     
@@ -191,10 +167,8 @@ def resolve_store(state: GraphState) -> GraphState:
         state["status"] = "ok"
         return state
     
-    # ═════════════════════════════════════════
     # 2. MCP search_merchant 호출
     #    (이름/번호 자동 구분 + DB 조회는 MCP가 담당)
-    # ═════════════════════════════════════════
     print(f"[RESOLVER] 검색 쿼리: '{search_query}'")
     
     try:
@@ -207,9 +181,7 @@ def resolve_store(state: GraphState) -> GraphState:
     search_type = result.get("search_type", "unknown")
     print(f"[RESOLVER] 검색 유형: {search_type}")
     
-    # ═════════════════════════════════════════
     # 3. 결과 처리
-    # ═════════════════════════════════════════
     if not result.get("found"):
         state["error"] = result.get("message", "검색 결과 없음")
         state["need_clarify"] = True
@@ -223,14 +195,14 @@ def resolve_store(state: GraphState) -> GraphState:
     # 3-1) 구분번호 직접 조회
     if search_type == "id":
         if candidates:
-            # ✅ 조회 성공 → store_id 확정
+            # 조회 성공 → store_id 확정
             best = candidates[0]
             store_id = str(best.get("가맹점_구분번호", ""))
             state["store_id"] = store_id
             
             print(f"[RESOLVER] 구분번호 조회 성공, load_store_data 호출 시작...")
             
-            # ✅ 완전한 데이터 로드 (load_store_data)
+            # 완전한 데이터 로드 (load_store_data)
             try:
                 result = call_mcp_tool("load_store_data", store_id=store_id, latest_only=True)
                 print(f"[RESOLVER] load_store_data 결과: success={result.get('success')}")
@@ -248,10 +220,10 @@ def resolve_store(state: GraphState) -> GraphState:
             
             state["need_clarify"] = False
             state["status"] = "ok"
-            print(f"[RESOLVER] ✅ 구분번호 조회 완료: {state['user_info'].get('store_name')}")
+            print(f"[RESOLVER] 구분번호 조회 완료: {state['user_info'].get('store_name')}")
             return state
         else:
-            # ❌ 조회 실패 → GENERAL 모드로 폴백
+            # 조회 실패 → GENERAL 모드로 폴백
             print(f"[RESOLVER] ⚠️ 구분번호 '{search_query}' 조회 실패 → GENERAL 모드")
             state["store_id"] = None
             state["user_info"] = None
@@ -269,7 +241,7 @@ def resolve_store(state: GraphState) -> GraphState:
         
         print(f"[RESOLVER] 가맹점명 1개 매칭, load_store_data 호출 시작...")
         
-        # ✅ 완전한 데이터 로드 (load_store_data)
+        # 완전한 데이터 로드 (load_store_data)
         try:
             result = call_mcp_tool("load_store_data", store_id=store_id, latest_only=True)
             print(f"[RESOLVER] load_store_data 결과: success={result.get('success')}")
@@ -286,7 +258,7 @@ def resolve_store(state: GraphState) -> GraphState:
         
         state["need_clarify"] = False
         state["status"] = "ok"
-        print(f"[RESOLVER] ✅ 가맹점 자동 확정: {state['user_info'].get('store_name')}")
+        print(f"[RESOLVER] 가맹점 자동 확정: {state['user_info'].get('store_name')}")
         return state
     
     # 3-3) 후보 여러 개 → 사용자 선택 필요
@@ -301,14 +273,14 @@ def _build_user_info(merchant: Dict[str, Any]) -> Dict[str, Any]:
     search_merchant 결과로 user_info 생성
     Note: search_merchant는 기본 정보만 반환하므로 일부 필드는 None 또는 기본값
     """
-    marketing_area = merchant.get("상권") or merchant.get("상권_지리")  # ✅ 상권 우선, 없으면 상권_지리
+    marketing_area = merchant.get("상권") or merchant.get("상권_지리")  # 상권 우선, 없으면 상권_지리
 
     user_info = {
         "store_name": merchant.get("가맹점명"),
         "store_num": str(merchant.get("가맹점_구분번호", "")),
         "location": merchant.get("가맹점_주소"),
         "marketing_area": marketing_area,
-        "marketing_area_type_geo": merchant.get("상권유형_지리"),  # ✅ 단일 컬럼만 사용
+        "marketing_area_type_geo": merchant.get("상권유형_지리"),  # 단일 컬럼만 사용
         "industry": merchant.get("업종"),
         "months_operating": None,
         "is_individual": None,
@@ -355,7 +327,7 @@ def _build_user_info_from_store_data(store_data: Dict[str, Any]) -> Dict[str, An
         "store_num": str(store_data.get("가맹점_구분번호", "")),
         "location": store_data.get("가맹점_주소"),
         "marketing_area": marketing_area,
-        "marketing_area_type_geo": store_data.get("상권유형_지리"),  # ✅ 단일 컬럼만 사용
+        "marketing_area_type_geo": store_data.get("상권유형_지리"),  # 단일 컬럼만 사용
         "industry": store_data.get("업종"),
         "months_operating": safe_int(store_data.get("영업_경과_개월")),
         "is_individual": business_type,
@@ -368,13 +340,7 @@ def _build_user_info_from_store_data(store_data: Dict[str, Any]) -> Dict[str, An
     
     return user_info
 
-# 77F596FCF5 본죽 트렌드 예측해줘
-# 77F596FCF5 트렌드 예측해줘
-# 본죽 트렌드 예측해줘
-
-# ─────────────────────────
 # Data Loader (store + bizarea)  ← region 제거 버전
-# ─────────────────────────
 def load_store_and_area_data(state: GraphState, include_region: bool = False, latest_only: bool = True) -> GraphState:
     """
     store_id 기준으로 store_data + bizarea_data 조회
@@ -399,7 +365,7 @@ def load_store_and_area_data(state: GraphState, include_region: bool = False, la
     except Exception:
         state["bizarea_data"] = None
 
-    # ✅ region 완전 제거 (혹시 기존 state에 남아있다면 정리)
+    # region 완전 제거 (혹시 기존 state에 남아있다면 정리)
     if "region_data" in state:
         del state["region_data"]
 

@@ -116,9 +116,7 @@ class RouterNode:
     def __call__(self, state: GraphState) -> GraphState:
         user_query = state.get("user_query", "")
 
-        # ═════════════════════════════════════════
         # 1) Intent 분류
-        # ═════════════════════════════════════════
         # 1-1) LLM 우선
         intent = self._classify_with_llm(user_query)
 
@@ -129,9 +127,7 @@ class RouterNode:
         state["intent"] = intent
         print(f"[ROUTER] Intent 분류 완료: {intent}")
 
-        # ═════════════════════════════════════════
         # 2) 가맹점 검색 (store_id 없을 때만)
-        # ═════════════════════════════════════════
         if not state.get("store_id"):
             print("[ROUTER] resolve_store 실행 중...")
             state = resolve_store(state)

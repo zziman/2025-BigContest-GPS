@@ -160,7 +160,7 @@ if __name__ == "__main__":
             store_id = args[i + 1]
 
     if not query:
-        print("❗ 사용법: python -m my_agent.nodes.issue --query '질문' [--store STORE_ID]")
+        print("사용법: python -m my_agent.nodes.issue --query '질문' [--store STORE_ID]")
         # 예) python -m my_agent.nodes.issue --query "문제점과 이를 해결할 수 있는 마케팅 전략을 알려줘" --store 761947ABD9
         sys.exit(1)
 

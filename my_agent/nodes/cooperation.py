@@ -83,7 +83,7 @@ class CooperationNode:
         candidates: List[Dict[str, Any]] = result.get("candidates", [])
         state["metrics"] = metrics if metrics else None
 
-        # 5. LLM 프롬프트 구성
+        # 3. LLM 프롬프트 구성
         prompt = f"""
 # 당신은 소상공인 마케팅 전문가입니다.  
 주어진 데이터와 후보 점포 리스트를 바탕으로 **협업 가능한 매장 조합과 시너지 아이디어**를 제시하세요.
@@ -131,14 +131,14 @@ class CooperationNode:
 4. 문단별 제목 유지
 """
 
-        # 6. LLM 호출 및 후처리
+        # 4. LLM 호출 및 후처리
         raw_response = self.llm.invoke(prompt).content
         final_response = postprocess_response(
             raw_response=raw_response,
             web_snippets=web_snippets
         )
 
-        # 7. 상태 갱신
+        # 4. 상태 갱신
         state["final_response"] = final_response
         state["need_clarify"] = False
         state["error"] = None
@@ -160,7 +160,7 @@ if __name__ == "__main__":
             store_id = args[i + 1]
 
     if not query:
-        print("❗ 사용법: python -m my_agent.nodes.cooperation --query '질문' [--store STORE_ID]")
+        print("사용법: python -m my_agent.nodes.cooperation --query '질문' [--store STORE_ID]")
         # python -m my_agent.nodes.cooperation --query '우리 매장이랑 협업하면 좋은 근처 가게 추천해줘.' --store 3B0F367222
         sys.exit(1)
 

@@ -12,7 +12,7 @@ from mcp.tools import (
     load_bizarea_data, 
     find_cooperation_candidates
 )
-from mcp.tools_web import web_search  # 웹 검색은 그대로 유지
+from mcp.tools_web import web_search 
 from mcp.tools_weather import get_weather_forecast 
 
 mcp = FastMCP(

@@ -19,7 +19,7 @@ def check_relevance(state: GraphState) -> GraphState:
     start_time = time.perf_counter() ## 시
     if not ENABLE_RELEVANCE_CHECK:
         state["relevance_passed"] = True
-        print("[Relevance] 체크 비활성화됨 → 자동 통과 ✅")
+        print("[Relevance] 체크 비활성화됨 → 자동 통과")
         return state
 
     response = (state.get("final_response") or "").strip()
@@ -61,7 +61,7 @@ def check_relevance(state: GraphState) -> GraphState:
     # 최종 판단
     ## 시간
     elapsed = time.perf_counter() - start_time
-    if relevance_score < 0.25:
+    if relevance_score < 0.1:
         state["relevance_passed"] = False
         state["error"] = f"[Relevance] 관련성 낮음 (score={relevance_score:.2f})"
         print(f"[Relevance 통과 X / 관련성 낮음] — score={relevance_score:.2f}, intent={intent} | {elapsed:.3f}s 소요")

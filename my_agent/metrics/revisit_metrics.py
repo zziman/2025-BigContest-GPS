@@ -10,8 +10,7 @@ Revisit Metrics Builder
 출력:
     {
       "revisit_metrics": {...},     # (이상치가 아니어도) 내려줄 지표
-      "abnormal_metrics": {...},    # 이상치로 감지된 항목만 메시지 포함
-      "yyyymm": "YYYYMM"
+      "abnormal_metrics": {...}    # 이상치로 감지된 항목만 메시지 포함
     }
 """
 
@@ -22,9 +21,7 @@ import pandas as pd
 from my_agent.utils.tools import load_store_and_area_data
 from my_agent.metrics.main_metrics import _safe, _drop_na_metrics
 
-
-# ───────── 임계값(튜닝 지점) ─────────
-# ※ 임계값은 주어진 값을 그대로 사용합니다.
+## 데이터 기반 임계값
 LOYAL_YOY_DROP_PP_THRESH = -3.68                 # 단골비중 YoY 하락(pp)
 LOYAL_3M_DELTA_PP_THRESH = -5.25                 # 단골비중 3개월 순증감(pp)
 NEW_DIFF_PEER_ABS_THRESH = 8.0                   # 신규비중_차이_pp |x|>8.0pp
@@ -46,7 +43,7 @@ def add_metric_if(abnormal_dict, key, value, condition_fn, message_fn):
 
 
 def build_revisit_metrics(store_num: str) -> Dict[str, Any]:
-    """revisit 메트릭 생성 (지표 선정은 기존과 동일, 이상치 메시지 톤/처리만 issue_metrics 스타일로 정비)"""
+    """revisit 메트릭 생성"""
     state = {"store_id": store_num}
     state = load_store_and_area_data(state, include_region=False, latest_only=True)
 
@@ -54,15 +51,12 @@ def build_revisit_metrics(store_num: str) -> Dict[str, Any]:
     if not store:
         raise ValueError("store_data not found. Check store_num.")
 
-    yyyymm = store.get("기준년월")
-
-    # ───────── (이상치 X 어도) 항상 내려줄 지표 ─────────
-    # ※ 기존 선정 지표 유지
+    # (이상치 X 어도) 항상 내려줄 지표 
     revisit_metrics = {
         "단골비중_차이_pp": _safe(store.get("단골비중_차이_pp")),
     }
 
-    # ───────── 이상치 탐지 (issue_metrics.py 메시지 톤으로 통일) ─────────
+    # 이상치 탐지 (issue_metrics.py 메시지 톤으로 통일) 
     abnormal_metrics: Dict[str, Any] = {}
 
     # 1) 단골비중_YoY_pp (하락 임계값)
@@ -131,9 +125,7 @@ def build_revisit_metrics(store_num: str) -> Dict[str, Any]:
 
     return {
         "revisit_metrics": revisit_metrics,
-        "abnormal_metrics": abnormal_metrics,
-        "yyyymm": yyyymm,
-    }
+        "abnormal_metrics": abnormal_metrics}
 
 
 if __name__ == "__main__":

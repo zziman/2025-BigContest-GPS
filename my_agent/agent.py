@@ -21,7 +21,7 @@ from my_agent.utils.config import DEFAULT_TOPK, DEFAULT_RECENCY_DAYS
 def create_graph():
     workflow = StateGraph(GraphState)
 
-    # ─── 노드 등록 ───
+    # 노드 등록
     workflow.add_node("router", RouterNode())
     workflow.add_node(
         "web_augment",
@@ -36,7 +36,7 @@ def create_graph():
     workflow.add_node("relevance_checker", check_relevance)
     workflow.add_node("memory_updater", update_conversation_memory)
     
-    # ─── 엣지 ───
+    # 엣지
     workflow.set_entry_point("router")
     
     # router 후 need_clarify 체크
@@ -60,10 +60,6 @@ def create_graph():
         if intent in ["SNS", "REVISIT", "ISSUE", "GENERAL", "COOPERATION", "SEASON"]:
             return intent
         return "GENERAL"
-    
-    ## 확인하고 싶으면 자기 노드 이름으로 변환
-    #def _route_intent(state):
-        #return "SNS"
 
     workflow.add_conditional_edges(
         "web_augment",
