@@ -300,7 +300,7 @@ def reset_clarify_state():
     st.session_state.clarify_selected_idx = 0
     st.session_state.last_web_snippets = None
     st.session_state.last_web_meta = None
-    st.session_state.processing = False  # 추가
+    st.session_state.processing = False
 
 def predict_next_month_sales(store_id: str, predictor, label_encoder, df_preprocessed):
     """다음 달 매출 구간 예측"""
@@ -308,10 +308,10 @@ def predict_next_month_sales(store_id: str, predictor, label_encoder, df_preproc
         return None
     
     try:
-        # 가맹점 ID 전처리: '___' 이후 부분 제거 (예: '761947ABD9___호남*' -> '761947ABD9')
+        # 가맹점 ID 전처리: '___' 이후 부분 제거
         clean_store_id = store_id.split('___')[0] if '___' in store_id else store_id
         
-        # 타임시리즈 데이터는 가맹점구분번호(언더바 없음)를 사용
+        # 타임시리즈 데이터는 가맹점구분번호 사용
         store_col = None
         possible_names = ["가맹점구분번호", "가맹점_구분번호", "MCT_KEY", "store_id"]
         
@@ -322,14 +322,12 @@ def predict_next_month_sales(store_id: str, predictor, label_encoder, df_preproc
         
         if not store_col:
             st.error(f"❌ 데이터 컬럼명 오류: 가맹점 ID 컬럼을 찾을 수 없습니다.")
-            st.write(f"사용 가능한 컬럼: {list(df_preprocessed.columns[:10])}...")
             return None
         
         # label_encoder로 원본 ID를 숫자로 변환
         try:
             encoded_store_id = label_encoder.transform([clean_store_id])[0]
         except ValueError:
-            # label_encoder에 없는 경우
             st.warning(f"⚠️ 가맹점 ID `{clean_store_id}`가 학습 데이터에 없습니다.")
             return None
 
@@ -361,9 +359,56 @@ def predict_next_month_sales(store_id: str, predictor, label_encoder, df_preproc
 
     except Exception as e:
         st.error(f"❌ 예측 중 오류 발생: {str(e)}")
-        import traceback
-        st.write(f"상세 오류: {traceback.format_exc()}")
         return None
+
+import streamlit as st
+import time
+
+# ─────────────────────────────────────────
+# GPS 스타일 시각화 함수 (Streamlit 호환)
+# ─────────────────────────────────────────
+def render_gps_style_prediction(prediction):
+    """GPS 스타일로 매출 예측 결과를 시각화"""
+
+    # 구간별 정보 매핑
+    level_info = {
+        0: {"progress": 5, "emoji": "🔴", "color": "#ff4444", "status": "목표 대비 매우 부진", "icon": "🏁"},
+        1: {"progress": 20, "emoji": "🟠", "color": "#ff8c42", "status": "목표 대비 부진", "icon": "🚗"},
+        2: {"progress": 40, "emoji": "🟡", "color": "#ffd93d", "status": "목표 대비 보통", "icon": "🛣️"},
+        3: {"progress": 62, "emoji": "🟢", "color": "#6bcf7f", "status": "목표 대비 양호", "icon": "🏙️"},
+        4: {"progress": 82, "emoji": "🔵", "color": "#4d96ff", "status": "목표 대비 우수", "icon": "🌆"},
+        5: {"progress": 95, "emoji": "🟣", "color": "#9b59b6", "status": "목표 초과 달성!", "icon": "🎯"}
+    }
+
+    info = level_info.get(prediction['predicted_class'], level_info[2])
+
+    # 메인 예측 결과
+    st.markdown(f"### 📊 다음달 예상 매출 구간")
+    st.markdown(f"<p style='font-size:2rem; color:{info['color']}; font-weight:700;'> {prediction['predicted_label']}</p>", unsafe_allow_html=True)
+
+    # GPS 스타일 진행도 바 + 애니메이션
+    st.markdown(f"{info['icon']} {info['status']}")
+    
+    progress_bar = st.progress(0)
+    progress_text = st.empty()
+    
+    for i in range(info['progress'] + 1):
+        progress_bar.progress(i)
+        progress_text.markdown(f"현재 위치: **{i}%** 도달")
+        time.sleep(0.02)  # 애니메이션 속도 조절
+
+    # 시작, 중간, 목표 표시
+    st.markdown(
+        """
+        <div style='display:flex; justify-content:space-between; color:gray; font-size:0.9rem; margin-top:0.5rem;'>
+            <span>🏁 시작</span>
+            <span>🛣️ 중간</span>
+            <span>🏆 목표</span>
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
+
 
 # ─────────────────────────────────────────
 # 사이드바
@@ -400,7 +445,11 @@ with st.sidebar:
 # ─────────────────────────────────────────
 # Top Bar + 헤더
 # ─────────────────────────────────────────
-st.markdown("## GPS")
+# 이미지 경로
+logo_path = Path("ASSETS/logo.png")
+
+# 이미지 출력
+st.image(str(logo_path), width=150)  # width 조정 가능
 st.caption("당신의 비즈니스가 어디에 있든, GPS는 늘 올바른 방향을 찾아드립니다.")
 
 # ─────────────────────────────────────────
@@ -418,18 +467,16 @@ if st.session_state.current_page == "Home":
         if "MCT_KEY" not in fr.columns:
             raise KeyError("dashboard.load_all_data() 결과에 MCT_KEY 컬럼이 없습니다.")
         
-        # 사용 가능한 가맹점 ID 목록 (MCT_KEY는 가맹점_구분번호와 동일)
+        # 사용 가능한 가맹점 ID 목록
         available_store_ids = fr["MCT_KEY"].dropna().unique().tolist()
         
-        # 샘플 ID 생성 (처음 4개)
+        # 샘플 ID 생성
         sample_ids = ", ".join(available_store_ids[:4]) if len(available_store_ids) >= 4 else ", ".join(available_store_ids[:2])
         
-        # 입력 박스
-        # 입력값 검증 안내 (입력박스보다 먼저 표시)
+        # 입력값 검증 안내
         if "store_id_input_home" not in st.session_state or not st.session_state["store_id_input_home"].strip():
             st.info(f"🔍 (가맹점구분코드__가맹점명)을 입력해주세요. (총 {len(available_store_ids)}개 가맹점)")
 
-            # 샘플 ID 더 보여주기
             with st.expander("💡 사용 가능한 가맹점 코드 예시 (처음 20개)"):
                 cols = st.columns(4)
                 for i, sid in enumerate(available_store_ids[:20]):
@@ -448,8 +495,7 @@ if st.session_state.current_page == "Home":
         if not store_id_input:
             st.stop()
 
-        
-        # 대시보드용 store_id (MCT_KEY에서 확인)
+        # 대시보드용 store_id
         if store_id_input not in available_store_ids:
             st.warning(f"⚠️ 입력하신 가맹점 구분코드 `{store_id_input}`를 찾을 수 없습니다.")
             
@@ -470,32 +516,29 @@ if st.session_state.current_page == "Home":
         
         store_id = store_id_input
 
-        # 컨텍스트 계산 (행정동 데이터 None)
+        # 컨텍스트 계산
         dfm, row_now, peers, tr_row, _ = dash.compute_context(fr, bz, None, store_id)
 
         # KPI 카드들
         st.markdown("### 주요 지표")
         kpis = dash.build_kpi_figs(row_now, dfm, peers)
 
-        # KPI 카드 렌더 부분
         if kpis:
-            cols = st.columns(4, gap="small")  # CHANGED: gap 추가
+            cols = st.columns(4, gap="small")
             for i, fig in enumerate(kpis[:4]):
                 with cols[i]:
                     st.plotly_chart(fig, use_container_width=True,
                                     config={"displayModeBar": False})
 
-
-        # 타임시리즈 예측
+        # 타임시리즈 예측 - GPS 스타일 적용
         st.markdown("---")
-        section("다음 달 매출 예측 (AI 기반)", "🔮")
+        section("AI기반 모델 예측", "🔮")
         
         predictor = load_predictor()
         label_encoder = load_label_encoder()
         df_preprocessed = load_preprocessed_data()
         
         if predictor and label_encoder and df_preprocessed is not None:
-            # 예측 시도
             try:
                 with st.spinner("🔍 다음 달 매출을 예측하는 중..."):
                     import time
@@ -509,35 +552,8 @@ if st.session_state.current_page == "Home":
                     elapsed_time = time.time() - start_time
                 
                 if prediction:
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        st.metric(
-                            label="📊 예상 매출 구간",
-                            value=prediction['predicted_label'],
-                            delta=None
-                        )
-                    
-                    with col2:
-                        st.metric(
-                            label="🎯 예측 확률",
-                            value=f"{prediction['predicted_probability']*100:.1f}%",
-                            delta=None
-                        )
-                    
-                    with col3:
-                        st.metric(
-                            label="⏱️ 예측 시간",
-                            value=f"{elapsed_time:.2f}초",
-                            delta=None
-                        )
-                    
-                    st.info("""
-                    **💡 AI 예측 정보**
-                    - AutoGluon 모델 기반 다음 달 매출 구간 예측
-                    - 과거 매출 패턴, 고객 행동, 상권 데이터 종합 분석
-                    - 예측 확률이 70% 이상일 때 신뢰도 높음
-                    """)
+                    # GPS 스타일 시각화 렌더링
+                    render_gps_style_prediction(prediction)
                 else:
                     st.warning("⚠️ 해당 가맹점의 AI 예측을 수행할 수 없습니다.")
             except Exception as e:
@@ -551,7 +567,7 @@ if st.session_state.current_page == "Home":
 
         # 2열 레이아웃: 인구 피라미드 + 방사형
         st.markdown("---")
-        colL, colR = st.columns([1, 1], gap="large")  # CHANGED: gap="large"
+        colL, colR = st.columns([1, 1], gap="large")
         with colL:
             st.markdown("#### 방문 고객 구조 (인구 피라미드)")
             st.plotly_chart(dash.build_pyramid(row_now, None),
@@ -563,29 +579,27 @@ if st.session_state.current_page == "Home":
             if mini_bars_fig is not None:
                 st.plotly_chart(mini_bars_fig, use_container_width=True, config={"displayModeBar": False})
 
-        # 두 그래프 아래 여백 조금 더
-        st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)  # CHANGED: 10px → 18px
+        # 두 그래프 아래 여백
+        st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
 
-
-        # 2열 레이아웃: 24개월 트렌드 + 격차
+        # 2열 레이아웃: 24개월 트렌드
         st.markdown("---")
-        st.markdown("#### 24개월 트렌드 (매출·재방문·객단가)")
+        st.markdown("#### 24개월 트렌드")
         st.plotly_chart(dash.build_trend_24m(dfm),
                         use_container_width=True, config={"displayModeBar": False})
 
         # 히트맵
         st.markdown("---")
-        st.markdown("### 요일 × 시간대 히트맵 (상권 기준, Z-정규화)")
+        st.markdown("### 요일 × 시간대 히트맵 (상권별)")
 
         hm_kind = st.radio(
             "데이터 선택", ["유동인구", "매출"], horizontal=True, index=0,
             help="유동인구 혹은 매출 금액 기준으로 시간대-요일 패턴을 봅니다."
         )
-        kind_key = "flow" if hm_kind == "유동인구" else "sales"  # CHANGED
+        kind_key = "flow" if hm_kind == "유동인구" else "sales"
         heatmap_fig = dash.build_heatmap(tr_row, kind=kind_key)
         st.plotly_chart(heatmap_fig, use_container_width=True, config={"displayModeBar": False})
         
-        st.caption("© 상태만 보여주는 대시보드(데모) — 전략/추천 문구 없음")
 
     except Exception:
         dash_err_box.error("대시보드 렌더 중 오류가 발생했습니다.")
@@ -619,12 +633,12 @@ else:
     with colR:
         st.button("🧹 새 대화 시작", use_container_width=True, on_click=clear_chat_history)
 
-    # 기존 대화 렌더 (먼저 렌더링)
+    # 기존 대화 렌더
     for i, m in enumerate(st.session_state.messages):
         role = "user" if isinstance(m, HumanMessage) else "assistant"
         render_chat_message(role, m.content, i)
 
-    # Clarify UI (대화 렌더 후에 표시)
+    # Clarify UI
     if st.session_state.get("pending_clarify"):
         st.markdown("---")
         st.info("🔍 후보가 여러 개입니다. 지점을 선택해주세요.")
@@ -677,9 +691,6 @@ else:
                 st.session_state.messages.append(AIMessage(content=f"❌ {err}"))
             else:
                 reply = re.get("final_response") or "응답을 생성할 수 없습니다."
-                time_footer = f"\n\n---\n⏱️ 응답 생성 시간: **{elapsed_time:.1f}초**"
-                reply_with_time = reply + time_footer
-                st.session_state.messages.append(AIMessage(content=reply_with_time))
 
                 st.session_state.last_web_snippets = re.get("web_snippets") or re.get("state", {}).get("web_snippets")
                 st.session_state.last_web_meta = re.get("web_meta") or re.get("state", {}).get("web_meta")
@@ -688,19 +699,15 @@ else:
             st.rerun()
         st.markdown("---")
 
-
     # 입력 처리
     if st.session_state.get("pending_clarify"):
         st.text_input("메시지 입력", placeholder="위에서 지점을 먼저 선택해주세요", disabled=True, key="disabled_input")
     else:
         if query := st.chat_input(CHAT_PLACEHOLDER):
-            # 사용자 메시지를 먼저 추가
             st.session_state.messages.append(HumanMessage(content=query))
-            
-            # 처리 전에 즉시 화면 갱신하여 사용자 입력을 보여줌
             st.rerun()
 
-    # pending_clarify가 아니고, 마지막 메시지가 사용자 메시지이며, 아직 처리되지 않은 경우
+    # 메시지 처리
     if (not st.session_state.get("pending_clarify") and 
         st.session_state.messages and 
         isinstance(st.session_state.messages[-1], HumanMessage) and
@@ -745,9 +752,8 @@ else:
 
         else:
             reply = result.get("final_response") or "응답을 생성할 수 없습니다."
-            time_footer = f"\n\n---\n⏱️ 응답 생성 시간: **{elapsed_time:.1f}초**"
-            reply_with_time = reply + time_footer
-            st.session_state.messages.append(AIMessage(content=reply_with_time))
+            # time_footer 제거
+            st.session_state.messages.append(AIMessage(content=reply))
 
             st.session_state.last_web_snippets = result.get("web_snippets") or result.get("state", {}).get("web_snippets")
             st.session_state.last_web_meta = result.get("web_meta") or result.get("state", {}).get("web_meta")
