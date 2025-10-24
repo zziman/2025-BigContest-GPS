@@ -101,6 +101,7 @@ GPS/
 │  ├─ server.py
 │  ├─ tools.py
 │  ├─ tools_web.py
+│  ├─ tools_weather.py
 │  ├─ contracts.py
 │  └─ adapter_client.py
 │
