@@ -26,8 +26,8 @@
 ## 설치 및 실행(uv)
 ```bash
 # 1) 저장소 클론
-git clone https://github.com/zziman/2025-BigContest.git
-cd 2025-BigContest
+git clone https://github.com/zziman/2025-BigContest-GPS.git
+cd 2025-BigContest-GPS
 
 # 2) 가상환경 + 의존성 설치
 uv venv
