@@ -32,8 +32,8 @@ cd 2025-BigContest
 # 2) 가상환경 + 의존성 설치
 uv venv
 source .venv/bin/activate    # Windows: .\.venv\Scripts\Activate.ps1
-uv pip install -r requirements.txt
 uv venv --python 3.10
+uv pip install -r requirements.txt
 
 # 3) 시크릿(secrets.toml) 생성 — 권장 방식
 mkdir -p .streamlit
