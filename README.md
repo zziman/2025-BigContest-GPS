@@ -17,7 +17,7 @@
 ## 팀원 소개
 | 이름 | 담당 업무 |
 |------|-----------|
-| 김차미 | EDA, 외부 데이터 전처리, Issue·Cooperation·Seasons Node 구현, UI |
+| 김차미 | EDA, 외부 데이터 전처리, Issue·Cooperation·Seasons Node 구현, Web RAG 구현, UI |
 | 박은우 | 외부 데이터 정제·병합 프로세스 구축, SNS Node 구현, Streamlit 시각화 |
 | 백경린 | 데이터 전처리 후 파생 지표 생성 및 체계화, 대시보드 구축, Revisit Node 구현 |
 | 이지민 (팀장) | AI 파이프라인·Agent 플로우 설계, MCP 툴 및 General Node 구현, UI |
