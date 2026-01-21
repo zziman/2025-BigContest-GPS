@@ -13,6 +13,12 @@
 5. `GPS! SNS 마케팅을 도와줘!` 방문 고객 특성에 따른 SNS 채널 추천 및 홍보안 작성
 6. `GPS! 나 마케팅에 대해 궁금한 점이 많아!` 그 외 기본적인 마케팅 질문에 대한 전문적인 응답
 
+| Main PDF | Appendix |
+|---|---|
+| <a href="assets/AI데이터활용분야_지피지기팀.pdf"><img src="assets/thumbnail.png" style="width:320px;aspect-ratio:16/9;object-fit:cover;" alt="Main PDF thumbnail"></a> | <a href="assets/AI데이터활용분야_지피지기팀_Appendix.pdf"><img src="assets/appendix_thumbnail.png" style="width:320px;aspect-ratio:16/9;object-fit:cover;" alt="Appendix PDF thumbnail"></a> |
+
+
+
 ---
 ## 팀원 소개
 | 이름 | 담당 업무 |
